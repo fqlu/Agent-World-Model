@@ -3,7 +3,7 @@
 **Attendees:**
 - [Name (Org)]
 
-**Context:** [Meeting type — e.g., "weekly client WIP", "ad-hoc sync", "kickoff", "internal review"]
+**Context:** [Meeting type — e.g., "weekly sync", "kickoff", "working session", "review"]
 
 ## Discussion
 - **[Topic]:** [Notes — what was said, who said it, why it matters]
@@ -20,4 +20,4 @@
 ## Related
 - [Parent Overview](../_Overview.md)
 - [Prior WIP note(s) referenced]
-- [Linked docs, SDs, briefs]
+- [Linked documents]

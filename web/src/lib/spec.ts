@@ -56,8 +56,18 @@ export function loadManifest(): SpecManifest {
   return cached;
 }
 
-export function loadTemplate(name: string): string {
+// Profile template overrides (spec/templates/profiles/<profile>/<name>)
+// take precedence over the organisation-neutral base templates.
+export function loadTemplate(name: string, profile?: string): string {
+  if (profile) {
+    const override = path.join(SPEC_DIR, "templates", "profiles", profile, name);
+    if (fs.existsSync(override)) return fs.readFileSync(override, "utf-8");
+  }
   return fs.readFileSync(path.join(SPEC_DIR, "templates", name), "utf-8");
+}
+
+export function listProfiles(): string[] {
+  return Object.keys(loadManifest().profiles);
 }
 
 export function ruleDef(id: string): LintRuleDef {

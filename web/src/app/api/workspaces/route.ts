@@ -7,10 +7,10 @@ export async function GET() {
 
 export async function POST(req: NextRequest) {
   const body = await req.json();
-  const { name, kind = "local", root, account_email } = body ?? {};
+  const { name, kind = "local", root, account_email, profile } = body ?? {};
   if (!name || !root || !["local", "gdrive"].includes(kind)) {
     return NextResponse.json({ error: "name, root, kind(local|gdrive) required" }, { status: 400 });
   }
-  const id = q.createWorkspace({ name, kind, root, account_email });
+  const id = q.createWorkspace({ name, kind, root, account_email, profile });
   return NextResponse.json({ id }, { status: 201 });
 }

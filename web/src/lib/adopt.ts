@@ -14,8 +14,8 @@ import {
 
 const WIP_SUFFIX = "WIP Notes";
 
-function renderScopeOverview(name: string): string {
-  return loadTemplate("_Overview.md")
+function renderScopeOverview(name: string, profile?: string): string {
+  return loadTemplate("_Overview.md", profile)
     .replace("# [Scope name]", `# ${name}`)
     .split("\n")
     .filter((l) => !l.startsWith(">"))
@@ -146,7 +146,7 @@ export async function buildAdoptionPlan(
       ops.push({
         action: "write",
         path: p,
-        content: loadTemplate(t.spec),
+        content: loadTemplate(t.spec, opts.profile),
         note: `Install template "${t.workspace}"`,
         selected: true,
       });
@@ -165,7 +165,7 @@ export async function buildAdoptionPlan(
         ops.push({
           action: "write",
           path: `${entity.path}/${manifest.scopes.context_file}`,
-          content: renderScopeOverview(entity.name),
+          content: renderScopeOverview(entity.name, opts.profile),
           note: `Create missing _Overview.md for entity "${entity.name}"`,
           selected: true,
         });

@@ -74,11 +74,20 @@ export const q = {
     db.prepare("SELECT * FROM workspaces ORDER BY id").all() as WorkspaceRow[],
   getWorkspace: (id: number) =>
     db.prepare("SELECT * FROM workspaces WHERE id = ?").get(id) as WorkspaceRow | undefined,
-  createWorkspace: (w: { name: string; kind: string; root: string; account_email?: string | null }) =>
+  createWorkspace: (w: {
+    name: string;
+    kind: string;
+    root: string;
+    account_email?: string | null;
+    profile?: string;
+  }) =>
     Number(
       db
-        .prepare("INSERT INTO workspaces (name, kind, root, account_email) VALUES (?,?,?,?)")
-        .run(w.name, w.kind, w.root, w.account_email ?? null).lastInsertRowid,
+        .prepare(
+          "INSERT INTO workspaces (name, kind, root, account_email, profile) VALUES (?,?,?,?,?)",
+        )
+        .run(w.name, w.kind, w.root, w.account_email ?? null, w.profile ?? "incubeta")
+        .lastInsertRowid,
     ),
 
   insertAudit: (workspaceId: number, findings: unknown, stats: unknown) =>

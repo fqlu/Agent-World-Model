@@ -1,14 +1,11 @@
 # YYYY-MM-DD
 
-*Cross-client index of the day. Lines are short. Substance lives in the linked WIP notes.*
+*Cross-workspace index of the day. Lines are short. Substance lives in the linked notes.*
 
-## [Client name]
-- [One-line topic] → [WIP note link]
+## [Entity / topic name]
+- [One-line event] → [WIP note or document link]
 
-## [Other client]
-- ...
-
-## Internal
+## [Other entity / topic]
 - ...
 
 ## Agent activity

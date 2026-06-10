@@ -379,8 +379,13 @@ are not lint subjects; overview content is free-form.
 
 ## 10. Profiles
 
-A profile layers org-specific ritual onto the core. The first profile is
-**`incubeta`** (full definition in `manifest.yaml`):
+A profile layers org-specific ritual onto the core: lint allowances, starter
+topology, and **template overrides** (`templates/profiles/<profile>/` falls
+back to the organisation-neutral base templates). The **`core`** profile is
+the neutral baseline — generic topology (`Projects/` + capabilities), no org
+rituals, no client vocabulary — and is the right starting point for any
+non-Incubeta structure. The **`incubeta`** profile adds (full definition in
+`manifest.yaml`):
 
 - **Draft lifecycle:** working files are prefixed `Draft_`; promotion to the
   production Drive strips the prefix and adds `[INT]`/`[EXT]`. Draft files

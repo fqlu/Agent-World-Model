@@ -86,7 +86,7 @@ export function renderWorkspaceYaml(opts: ScaffoldOptions, mounts: Mounts): stri
 export function renderAgentsMd(opts: ScaffoldOptions, mounts: Mounts): string {
   const manifest = loadManifest();
   const profile = manifest.profiles[opts.profile] ?? {};
-  return loadTemplate("AGENTS.md")
+  return loadTemplate("AGENTS.md", opts.profile)
     .replaceAll("{{spec_version}}", manifest.spec_version)
     .replaceAll("{{profile}}", opts.profile)
     .replaceAll("{{owner_name}}", opts.ownerName)
@@ -163,7 +163,7 @@ export function buildScaffoldPlan(opts: ScaffoldOptions): Op[] {
     ops.push({
       action: "write",
       path: `${mounts.templates}/${t.workspace}`,
-      content: loadTemplate(t.spec),
+      content: loadTemplate(t.spec, opts.profile),
       note: `Install template "${t.workspace}"`,
       selected: true,
     });

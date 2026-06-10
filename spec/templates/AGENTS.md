@@ -45,8 +45,8 @@ the tree and the context directories are the source of truth.
 
 1. **Read before write.** Entering a scope: `_Overview.md` → `_Tasks.md` (if
    present) → recent WIP notes as needed. Don't act on a scope you haven't read.
-2. **Retrieve by address.** Context for client X's project Y is at
-   `Clients/X/X | Y/_Overview.md` — go there; don't trawl.
+2. **Retrieve by address.** Context for entity X's project Y is at
+   `<Area>/X/X | Y/_Overview.md` — go there; don't trawl.
 3. **Merge, don't overwrite.** Same-date notes and journal files are merged
    into. Edit overviews surgically; never regenerate them wholesale.
 4. **Close the loop.** After changing files: add a line to the scope's

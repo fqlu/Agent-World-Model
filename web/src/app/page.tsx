@@ -1,11 +1,28 @@
 import Link from "next/link";
 import { q } from "@/lib/db";
 import { googleConfigured } from "@/lib/google";
+import { listProfiles } from "@/lib/spec";
 import { createWorkspaceAction } from "./actions";
 import FolderPicker from "@/components/folder-picker";
 import type { AuditStats } from "@/lib/linter";
 
 export const dynamic = "force-dynamic";
+
+function ProfileSelect() {
+  return (
+    <label className="block text-sm font-medium text-zinc-700">
+      Profile
+      <select name="profile" defaultValue="incubeta" className="input">
+        {listProfiles().map((p) => (
+          <option key={p} value={p}>
+            {p}
+            {p === "core" ? " (organisation-neutral)" : ""}
+          </option>
+        ))}
+      </select>
+    </label>
+  );
+}
 
 export default function Home() {
   const workspaces = q.listWorkspaces();
@@ -81,6 +98,7 @@ export default function Home() {
               <FolderPicker name="root" />
             </div>
           </div>
+          <ProfileSelect />
           <button className="btn-primary">Add workspace</button>
         </form>
 
@@ -128,6 +146,7 @@ export default function Home() {
                     className="input"
                   />
                 </label>
+                <ProfileSelect />
                 <button className="btn-primary">Add Drive workspace</button>
               </form>
             </>

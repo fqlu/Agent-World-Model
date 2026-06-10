@@ -93,7 +93,19 @@ rules:
   - { id: CX-001, severity: error, summary: context group files valid (name/title/members) }
   - { id: CX-002, severity: warn,  summary: context group member paths exist under declaring folder }
 
+# Profiles layer org-specific rituals and template overrides onto the core
+# protocol. Template overrides live in spec/templates/profiles/<profile>/ and
+# fall back to the neutral base templates in spec/templates/.
 profiles:
+  core:
+    # The organisation-neutral baseline: no draft lifecycle, no org rituals.
+    default_topology:
+      areas: [Projects]
+      journal: Journal
+      templates: Templates
+      archive: Archive
+      context: _Context
+    root_file_allowance: []
   incubeta:
     default_topology:           # starter, not law — workspaces may declare otherwise
       areas: [Clients, Internal]
