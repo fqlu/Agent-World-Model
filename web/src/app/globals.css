@@ -1,0 +1,36 @@
+@import "tailwindcss";
+
+@theme inline {
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+/* The app owns its theme: deliberate light palette, independent of the OS
+   color scheme. (Dark mode is a future feature, not an inherited accident.) */
+:root {
+  color-scheme: light;
+}
+
+body {
+  background: #f4f4f5; /* zinc-100 */
+  color: #18181b; /* zinc-900 */
+  font-family: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+}
+
+@layer components {
+  .card {
+    @apply rounded-xl border border-zinc-200 bg-white text-zinc-900 shadow-sm;
+  }
+  .btn-primary {
+    @apply inline-flex items-center rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-indigo-500 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600;
+  }
+  .btn-secondary {
+    @apply inline-flex items-center rounded-lg border border-zinc-300 bg-white px-4 py-2 text-sm font-medium text-zinc-700 shadow-sm hover:bg-zinc-50 hover:border-zinc-400;
+  }
+  .input {
+    @apply mt-1 w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 placeholder-zinc-400 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-100;
+  }
+  .badge {
+    @apply inline-flex items-center rounded-md px-1.5 py-0.5 text-xs font-medium;
+  }
+}

@@ -1,0 +1,19 @@
+# Workspace topology manifest — declares where the protocol's primitives are
+# mounted in THIS workspace. The linter validates against this declaration;
+# _PROTOCOL.md's Map section is generated from it.
+spec_version: 0.1.0
+profile: incubeta
+
+owner:
+  name: "{{owner_name}}"
+  email: "{{owner_email}}"
+
+mounts:
+  # Scope-bearing folders (>=1, any names you like)
+  areas:
+    - Clients
+    - Internal
+  # The three required capabilities — paths are yours to choose
+  journal: Journal
+  templates: Templates
+  archive: Archive

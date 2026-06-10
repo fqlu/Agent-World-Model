@@ -1,0 +1,106 @@
+# Drive Context Protocol — machine-readable manifest
+# Mirrors SPEC.md §9. The linter consumes this file; SPEC.md is for humans.
+spec_version: 0.1.0
+
+# Topology is declarative (SPEC §2): each workspace declares its own layout in
+# a root _Workspace.yaml; the linter validates against that declaration.
+workspace:
+  manifest_file: _Workspace.yaml
+  required_root_files: [_Workspace.yaml, _PROTOCOL.md, _Overview.md]  # ST-001
+  required_capabilities: [journal, templates, archive]                # ST-003
+  areas_min: 1                                                        # ST-003
+  protocol_synced_with_manifest: true                                 # ST-005
+  # undeclared root items -> ST-004 (warn); profiles may whitelist files
+
+scopes:
+  context_file: _Overview.md
+  optional_files: [_Tasks.md]
+  overview_required_sections:        # OV-001, order enforced
+    - "What it is"
+    - "Active workstreams"
+    - "Key people"
+    - "Recent activity"
+    - "Reference"
+  overview_extra_sections: between Key people and Recent activity
+  recent_activity_cap: 10            # OV-002, info
+  forbidden_subfolders:              # SC-002, warn
+    - Reports
+    - Briefs
+    - Documents
+    - Files
+
+collections:
+  wip_notes:
+    suffix: " | WIP Notes"
+    file_pattern: '^\d{4}-\d{2}-\d{2}\.md$'   # CL-001
+    template: "WIP Note.md"
+    required_sections: [Discussion, Decisions, Actions]   # CL-002, warn
+  journal:
+    # relative to the workspace's declared journal mount               # JR-001
+    path_pattern: '^\d{4}/\d{4}-\d{2}/\d{4}-\d{2}-\d{2}\.md$'
+    template: "Daily Journal.md"
+    agent_activity_heading: "Agent activity"   # JR-003
+
+naming:
+  pipe_separator: " | "
+  entity_no_pipes: true              # NM-003
+  ancestry_prefix: short_name_aware  # NM-001; short name = trailing "(...)" of own segment
+  iso_dates: true                    # NM-002
+  context_file_prefix: "_"
+
+archive:
+  mirror_original_path: true         # AR-001
+  delete_forbidden: true
+
+templates:
+  _Workspace.yaml: "_Workspace.yaml"
+  _Overview.md: "_Overview.md"
+  _Tasks.md: "_Tasks.md"
+  wip_note: "WIP Note.md"
+  journal_day: "Daily Journal.md"
+  _PROTOCOL.md: "_PROTOCOL.md"
+
+rules:
+  - { id: ST-001, severity: error, summary: root has _Workspace.yaml + _PROTOCOL.md + _Overview.md }
+  - { id: ST-002, severity: error, summary: every declared mount exists }
+  - { id: ST-003, severity: error, summary: capabilities mounted and >=1 area declared }
+  - { id: ST-004, severity: warn,  summary: no undeclared root items }
+  - { id: ST-005, severity: error, summary: _PROTOCOL.md in sync with _Workspace.yaml }
+  - { id: SC-001, severity: error, summary: every scope has _Overview.md }
+  - { id: SC-002, severity: warn,  summary: no per-type subfolders in scopes }
+  - { id: SC-003, severity: info,  summary: asset folders referenced from parent overview }
+  - { id: SC-004, severity: warn,  summary: unclassifiable folder in area }
+  - { id: CL-001, severity: error, summary: WIP notes named YYYY-MM-DD.md }
+  - { id: CL-002, severity: warn,  summary: WIP note follows template sections }
+  - { id: NM-001, severity: error, summary: pipe-name mirrors ancestry }
+  - { id: NM-002, severity: warn,  summary: ISO dates in names }
+  - { id: NM-003, severity: error, summary: entity names contain no pipes }
+  - { id: OV-001, severity: error, summary: overview has required sections in order }
+  - { id: OV-002, severity: info,  summary: recent activity capped at ~10 }
+  - { id: TK-001, severity: warn,  summary: tasks follow open/done format }
+  - { id: JR-001, severity: error, summary: journal path convention }
+  - { id: JR-002, severity: info,  summary: journal is index not substance }
+  - { id: JR-003, severity: warn,  summary: agent sessions journaled }
+  - { id: AR-001, severity: error, summary: archive mirrors paths, no deletes }
+
+profiles:
+  incubeta:
+    default_topology:           # starter, not law — workspaces may declare otherwise
+      areas: [Clients, Internal]
+      journal: Journal
+      templates: Templates
+      archive: Archive
+    draft_lifecycle:
+      working_prefix: "Draft_"
+      production_prefixes: ["[INT]", "[EXT]"]
+      sharing_only_from_production: true
+    status_flags:
+      production: "🟢"
+      beta: "🟡"
+      draft: "🟠"
+      deprecated: "🔴"
+    root_file_allowance: [CLAUDE.md]
+    entity_reference_requires: [production_drive_folder_id]
+    internal_solutions:
+      path: Internal/Solutions
+      naming: "Solutions | <Category> | <Platform>"
