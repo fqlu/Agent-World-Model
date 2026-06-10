@@ -1,7 +1,7 @@
 # Workspace topology manifest — declares where the protocol's primitives are
 # mounted in THIS workspace. The linter validates against this declaration;
-# _PROTOCOL.md's Map section is generated from it.
-spec_version: 0.1.0
+# AGENTS.md's Map section is generated from it.
+spec_version: 0.6.0
 profile: incubeta
 
 owner:
@@ -17,3 +17,6 @@ mounts:
   journal: Journal
   templates: Templates
   archive: Archive
+  # Optional: context groups — declares the root context directory AND the
+  # directory name any folder can use for its own level's groups
+  context: _Context

@@ -5,6 +5,7 @@ export type Mounts = {
   journal: string;
   templates: string;
   archive: string;
+  context?: string; // optional capability (SPEC §6.4)
 };
 
 export type WorkspaceDecl = {

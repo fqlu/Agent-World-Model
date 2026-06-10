@@ -3,7 +3,12 @@
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { q } from "@/lib/db";
-import { runAuditSvc, createProposalSvc, applyProposalSvc } from "@/lib/service";
+import {
+  runAuditSvc,
+  createProposalSvc,
+  applyProposalSvc,
+  regenerateIndexSvc,
+} from "@/lib/service";
 
 export async function createWorkspaceAction(formData: FormData) {
   const name = String(formData.get("name") ?? "").trim();
@@ -13,6 +18,12 @@ export async function createWorkspaceAction(formData: FormData) {
   if (!name || !root) throw new Error("Name and root are required");
   const id = q.createWorkspace({ name, kind, root, account_email: accountEmail });
   redirect(`/w/${id}`);
+}
+
+export async function regenerateIndexAction(wsId: number) {
+  await regenerateIndexSvc(wsId);
+  revalidatePath(`/w/${wsId}`);
+  redirect(`/w/${wsId}`);
 }
 
 export async function runAuditAction(wsId: number) {

@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { q } from "@/lib/db";
-import { applyProposalAction } from "@/app/actions";
+import { applyProposalAction, runAuditAction } from "@/app/actions";
 import type { PlanPayload } from "@/lib/service";
 import type { OpResult } from "@/lib/ops";
 
@@ -41,6 +41,23 @@ export default async function ProposalPage({
           {plan.notes.map((n, i) => (
             <p key={i}>{n}</p>
           ))}
+        </div>
+      )}
+
+      {(plan.manual ?? []).length > 0 && (
+        <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+          <h2 className="font-semibold">Needs human judgment</h2>
+          <p className="mt-1 text-xs text-amber-800">
+            These audit findings have no safe automated fix — resolve them by hand (or with an
+            agent) and re-run the audit:
+          </p>
+          <ul className="mt-2 space-y-1">
+            {plan.manual!.map((m, i) => (
+              <li key={i} className="font-mono text-xs">
+                {m}
+              </li>
+            ))}
+          </ul>
         </div>
       )}
 
@@ -86,7 +103,16 @@ export default async function ProposalPage({
           <button className="btn-primary">Apply selected operations</button>
         </form>
       ) : (
-        <section>
+        <section className="space-y-4">
+          <form
+            action={runAuditAction.bind(null, ws.id)}
+            className="flex flex-wrap items-center gap-3 rounded-lg border border-indigo-200 bg-indigo-50 p-4"
+          >
+            <p className="flex-1 text-sm text-indigo-900">
+              <strong>Next step:</strong> verify the repairs with a fresh read-only audit.
+            </p>
+            <button className="btn-primary">Re-run audit →</button>
+          </form>
           <h2 className="font-semibold text-zinc-900">Result</h2>
           <ul className="mt-2 space-y-1">
             {(results ?? []).map((r, i) => (

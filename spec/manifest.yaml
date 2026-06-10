@@ -1,33 +1,35 @@
 # Drive Context Protocol — machine-readable manifest
 # Mirrors SPEC.md §9. The linter consumes this file; SPEC.md is for humans.
-spec_version: 0.1.0
+spec_version: 0.6.0
 
 # Topology is declarative (SPEC §2): each workspace declares its own layout in
 # a root _Workspace.yaml; the linter validates against that declaration.
 workspace:
   manifest_file: _Workspace.yaml
-  required_root_files: [_Workspace.yaml, _PROTOCOL.md, _Overview.md]  # ST-001
+  rulebook_file: AGENTS.md             # cross-vendor agent auto-discovery standard
+  required_root_files: [_Workspace.yaml, AGENTS.md, _Overview.md]     # ST-001
+  optional_root_files: [_Index.md]     # generated artifact (§6.5), exempt from ST-004
   required_capabilities: [journal, templates, archive]                # ST-003
+  optional_capabilities: [context]                                    # §6.4
   areas_min: 1                                                        # ST-003
   protocol_synced_with_manifest: true                                 # ST-005
   # undeclared root items -> ST-004 (warn); profiles may whitelist files
 
 scopes:
+  # Content by default (SPEC §3): a folder is a scope only if it contains the
+  # context file. Entities (depth-1 in an area) MUST be scopes; deeper folders
+  # are promoted by choice. Overview content is free-form; the sections below
+  # are recommendations read by tooling (index generator), not lint subjects.
   context_file: _Overview.md
+  promotion: context_file_presence
+  entity_overview_required: true     # SC-001 (entities only)
   optional_files: [_Tasks.md]
-  overview_required_sections:        # OV-001, order enforced
+  recommended_sections:
     - "What it is"
     - "Active workstreams"
     - "Key people"
     - "Recent activity"
     - "Reference"
-  overview_extra_sections: between Key people and Recent activity
-  recent_activity_cap: 10            # OV-002, info
-  forbidden_subfolders:              # SC-002, warn
-    - Reports
-    - Briefs
-    - Documents
-    - Files
 
 collections:
   wip_notes:
@@ -41,6 +43,15 @@ collections:
     template: "Daily Journal.md"
     agent_activity_heading: "Agent activity"   # JR-003
 
+context:
+  default_mount: "_Context"      # also the context DIRECTORY NAME at every level
+  per_folder: true               # any folder may hold a context directory
+  template: "Context Group.md"
+  required_frontmatter: [name, title, members]   # CX-001
+  members: descendant_folder_paths               # relative to declaring folder; CX-002
+  inheritance: down              # effective context = own + all ancestors'
+  placement: lowest_common_ancestor              # guidance, not lint-enforced
+
 naming:
   pipe_separator: " | "
   entity_no_pipes: true              # NM-003
@@ -53,35 +64,34 @@ archive:
   delete_forbidden: true
 
 templates:
+  context_group: "Context Group.md"
   _Workspace.yaml: "_Workspace.yaml"
   _Overview.md: "_Overview.md"
   _Tasks.md: "_Tasks.md"
   wip_note: "WIP Note.md"
   journal_day: "Daily Journal.md"
-  _PROTOCOL.md: "_PROTOCOL.md"
+  AGENTS.md: "AGENTS.md"
 
 rules:
-  - { id: ST-001, severity: error, summary: root has _Workspace.yaml + _PROTOCOL.md + _Overview.md }
+  - { id: ST-001, severity: error, summary: root has _Workspace.yaml + AGENTS.md + _Overview.md }
   - { id: ST-002, severity: error, summary: every declared mount exists }
   - { id: ST-003, severity: error, summary: capabilities mounted and >=1 area declared }
   - { id: ST-004, severity: warn,  summary: no undeclared root items }
-  - { id: ST-005, severity: error, summary: _PROTOCOL.md in sync with _Workspace.yaml }
-  - { id: SC-001, severity: error, summary: every scope has _Overview.md }
-  - { id: SC-002, severity: warn,  summary: no per-type subfolders in scopes }
-  - { id: SC-003, severity: info,  summary: asset folders referenced from parent overview }
-  - { id: SC-004, severity: warn,  summary: unclassifiable folder in area }
+  - { id: ST-005, severity: error, summary: AGENTS.md in sync with _Workspace.yaml }
+  - { id: SC-001, severity: error, summary: every entity (depth-1 in area) has _Overview.md }
   - { id: CL-001, severity: error, summary: WIP notes named YYYY-MM-DD.md }
   - { id: CL-002, severity: warn,  summary: WIP note follows template sections }
-  - { id: NM-001, severity: error, summary: pipe-name mirrors ancestry }
-  - { id: NM-002, severity: warn,  summary: ISO dates in names }
+  - { id: NM-001, severity: error, summary: promoted scopes/collections pipe-name mirrors ancestry }
+  - { id: NM-002, severity: warn,  summary: promoted scopes use ISO dates in names }
   - { id: NM-003, severity: error, summary: entity names contain no pipes }
-  - { id: OV-001, severity: error, summary: overview has required sections in order }
-  - { id: OV-002, severity: info,  summary: recent activity capped at ~10 }
   - { id: TK-001, severity: warn,  summary: tasks follow open/done format }
+  # removed in v0.6 (content-by-default): SC-002, SC-003, SC-004, OV-001, OV-002
   - { id: JR-001, severity: error, summary: journal path convention }
   - { id: JR-002, severity: info,  summary: journal is index not substance }
   - { id: JR-003, severity: warn,  summary: agent sessions journaled }
   - { id: AR-001, severity: error, summary: archive mirrors paths, no deletes }
+  - { id: CX-001, severity: error, summary: context group files valid (name/title/members) }
+  - { id: CX-002, severity: warn,  summary: context group member paths exist under declaring folder }
 
 profiles:
   incubeta:
@@ -90,6 +100,7 @@ profiles:
       journal: Journal
       templates: Templates
       archive: Archive
+      context: _Context
     draft_lifecycle:
       working_prefix: "Draft_"
       production_prefixes: ["[INT]", "[EXT]"]

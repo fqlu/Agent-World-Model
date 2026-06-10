@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { q } from "@/lib/db";
+import { createProposalAction } from "@/app/actions";
 import type { Finding, AuditStats } from "@/lib/linter";
 
 export const dynamic = "force-dynamic";
@@ -50,6 +51,19 @@ export default async function AuditPage({
           <span className="text-zinc-500">{stats.infos} info</span>
         </p>
       </div>
+
+      {findings.length > 0 && (
+        <form
+          action={createProposalAction.bind(null, ws.id, "adopt" as const)}
+          className="flex flex-wrap items-center gap-3 rounded-lg border border-indigo-200 bg-indigo-50 p-4"
+        >
+          <p className="flex-1 text-sm text-indigo-900">
+            <strong>Next step:</strong> turn these findings into a reviewable repair plan —
+            you approve every operation before it runs.
+          </p>
+          <button className="btn-primary">Propose repairs →</button>
+        </form>
+      )}
 
       {findings.length === 0 ? (
         <p className="rounded-lg border border-green-200 bg-green-50 p-4 text-sm text-green-800">

@@ -15,18 +15,35 @@ export function defaultTopology(profileName: string): Mounts {
   const manifest = loadManifest();
   const p = manifest.profiles[profileName];
   const t = p?.default_topology;
-  if (t) return { areas: [...t.areas], journal: t.journal, templates: t.templates, archive: t.archive };
-  return { areas: ["Projects"], journal: "Journal", templates: "Templates", archive: "Archive" };
+  if (t)
+    return {
+      areas: [...t.areas],
+      journal: t.journal,
+      templates: t.templates,
+      archive: t.archive,
+      context: t.context,
+    };
+  return {
+    areas: ["Projects"],
+    journal: "Journal",
+    templates: "Templates",
+    archive: "Archive",
+    context: "_Context",
+  };
 }
 
 export function renderMap(mounts: Mounts): string {
   const lines: string[] = [];
   lines.push("_Workspace.yaml   ← topology declaration (this map's source)");
   lines.push("_Overview.md      ← whose workspace this is; start here");
+  lines.push("_Index.md         ← generated map of scopes + context groups");
   for (const a of mounts.areas) lines.push(`${a}/`.padEnd(18) + "← area: holds scopes");
   lines.push(`${mounts.journal}/`.padEnd(18) + "← journal: daily index + agent activity log");
   lines.push(`${mounts.templates}/`.padEnd(18) + "← templates: copy, never invent layouts");
   lines.push(`${mounts.archive}/`.padEnd(18) + "← archive: superseded material, mirrors paths");
+  if (mounts.context) {
+    lines.push(`${mounts.context}/`.padEnd(18) + "← context groups: declared folder associations");
+  }
   return lines.join("\n");
 }
 
@@ -61,14 +78,15 @@ export function renderWorkspaceYaml(opts: ScaffoldOptions, mounts: Mounts): stri
       journal: mounts.journal,
       templates: mounts.templates,
       archive: mounts.archive,
+      ...(mounts.context ? { context: mounts.context } : {}),
     },
   });
 }
 
-export function renderProtocol(opts: ScaffoldOptions, mounts: Mounts): string {
+export function renderAgentsMd(opts: ScaffoldOptions, mounts: Mounts): string {
   const manifest = loadManifest();
   const profile = manifest.profiles[opts.profile] ?? {};
-  return loadTemplate("_PROTOCOL.md")
+  return loadTemplate("AGENTS.md")
     .replaceAll("{{spec_version}}", manifest.spec_version)
     .replaceAll("{{profile}}", opts.profile)
     .replaceAll("{{owner_name}}", opts.ownerName)
@@ -114,7 +132,9 @@ export function buildScaffoldPlan(opts: ScaffoldOptions): Op[] {
   for (const a of mounts.areas) {
     ops.push({ action: "mkdir", path: a, note: `Create area "${a}"`, selected: true });
   }
-  for (const m of [mounts.journal, mounts.templates, mounts.archive]) {
+  for (const m of [mounts.journal, mounts.templates, mounts.archive, mounts.context].filter(
+    (x): x is string => Boolean(x),
+  )) {
     ops.push({ action: "mkdir", path: m, note: `Create capability mount "${m}"`, selected: true });
   }
   ops.push({
@@ -126,10 +146,10 @@ export function buildScaffoldPlan(opts: ScaffoldOptions): Op[] {
   });
   ops.push({
     action: "write",
-    path: "_PROTOCOL.md",
-    content: renderProtocol(opts, mounts),
+    path: "AGENTS.md",
+    content: renderAgentsMd(opts, mounts),
     overwrite: true,
-    note: "Generate the agent rulebook from spec + profile + topology",
+    note: "Generate the agent rulebook (AGENTS.md) from spec + profile + topology",
     selected: true,
   });
   ops.push({

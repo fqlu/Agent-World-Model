@@ -1,6 +1,6 @@
 # Drive Context Protocol — Specification
 
-**Version:** 0.1.0 (draft)
+**Version:** 0.6.0 (draft)
 **Status:** 🟠 Draft — under review by James Lu
 **Reference implementation:** Incubeta Master Folder (jamesfqlu@gmail.com Drive)
 
@@ -50,26 +50,29 @@ declares where those primitives are mounted in a root topology manifest,
 `_Workspace.yaml`:
 
 ```yaml
-spec_version: 0.1.0
+spec_version: 0.6.0
 profile: incubeta
 mounts:
   areas: [Clients, Internal]   # scope-bearing folders (≥1, any names)
   journal: Journal             # memory capability (§7)
   templates: Templates         # canonical templates for this workspace
   archive: Archive             # non-destruction capability (§8)
+  context: _Context            # OPTIONAL: context groups (§6.4)
 ```
 
-- The workspace root MUST contain `_Workspace.yaml`, `_PROTOCOL.md`, and
+- The workspace root MUST contain `_Workspace.yaml`, `AGENTS.md`, and
   `_Overview.md`. `[ST-001]`
 - Every mount declared in `_Workspace.yaml` MUST exist. `[ST-002]`
 - The three capabilities — journal, templates, archive — MUST each be mounted
   somewhere; their paths and names are free. Without them the memory (§7) and
   safety (§8) contracts have no home. `[ST-003]`
+- The **context** capability (§6.4) is OPTIONAL. When declared, its mount must
+  exist like any other (`[ST-002]`) and its group files must be valid.
 - At least one **area** MUST be declared. Areas hold scopes; their names are
   free (`Clients`, `Projects`, `Research`…). `[ST-003]`
 - Root items not declared in the manifest are flagged for triage. Profiles MAY
   whitelist extra root files (e.g. `CLAUDE.md`). `[ST-004]`
-- `_PROTOCOL.md` is generated from the spec + profile + `_Workspace.yaml` and
+- `AGENTS.md` is generated from the spec + profile + `_Workspace.yaml` and
   MUST stay in sync with it — its Map section *is* the declared topology, so
   agents learn the layout by reading one file. Retrieval by address survives
   because the address book is declared, not assumed. `[ST-005]`
@@ -80,41 +83,38 @@ workspace). A teammate might mount `Projects/ + Knowledge/` instead; both lint
 clean, and both speak the same protocol.
 
 > **Divergence from reference:** the reference workspace keeps `CLAUDE.md` at
-> root with no root `_Overview.md` or `_PROTOCOL.md`. Under this spec the agent
-> rulebook is the tool-agnostic `_PROTOCOL.md`; a `CLAUDE.md` (allowed by the
-> Incubeta profile) should reduce to pointers at `_PROTOCOL.md` plus
+> root with no root `_Overview.md` or `AGENTS.md`. Under this spec the agent
+> rulebook is the tool-agnostic `AGENTS.md`; a `CLAUDE.md` (allowed by the
+> Incubeta profile) should reduce to pointers at `AGENTS.md` plus
 > tool-specific notes.
 
 ---
 
-## 3. Scopes
+## 3. Scopes — content by default, promotion by choice
 
-A **scope** is a folder that represents a unit of work or knowledge and carries
-its own context file. Scopes nest:
+The protocol deliberately does NOT demand context files everywhere. Folders
+are **content by default**; a folder becomes a **scope** only when someone
+gives it an `_Overview.md`. Governance lives at a few mandatory anchors plus
+whatever depth *you* choose to maintain — ceremony never exceeds value.
 
-| Level | Name | Example | Parent |
-|---|---|---|---|
-| 1 | **Entity** | `Hanesbrands (Hanes)/` | an area |
-| 2 | **Unit** (product / function / brand) | `Hanes \| Offline CAPI/` | entity |
-| 3+ | **Sub-project** | `Hanes \| Offline CAPI \| QA/` | unit or sub-project |
+| Kind | How recognised | Obligations |
+|---|---|---|
+| **Entity** | depth-1 folder in an area (`Clients/Hanesbrands (Hanes)/`) | MUST have `_Overview.md` `[SC-001]`; no pipes in name `[NM-003]` |
+| **Promoted scope** | any deeper folder containing `_Overview.md` | pipe-name mirrors ancestry `[NM-001]`; ISO dates `[NM-002]` |
+| **Collection** | reserved suffix (`… \| WIP Notes`) | collection rules (§4) |
+| **Content folder** | everything else | **none** — documentation bundles, asset dumps, working files need no context machinery |
 
-- Every scope MUST contain an `_Overview.md` conforming to §6.1. `[SC-001]`
-- A scope MAY contain working files directly (reports, briefs, data exports).
-  Per-type subfolders (`Reports/`, `Briefs/`) SHOULD NOT be created. `[SC-002]`
-- A scope MAY contain **collections** (§4) and child scopes.
-
-### Non-scope folders
-
-Two kinds of folders are not scopes and need no `_Overview.md`:
-
-- **Collections** (§4) — recognised by reserved suffix (e.g. `… | WIP Notes`).
-- **Asset folders** — ad-hoc groupings of files (e.g. `… | QA Reports`).
-  Asset folders SHOULD be listed in the parent overview's `## Reference`
-  section so they remain discoverable. `[SC-003]`
-
-A folder inside an area that has no `_Overview.md` and no reserved suffix is
-flagged for triage: it is either a scope missing its overview (fix) or an asset
-folder missing registration (fix differently). `[SC-004]`
+- Entities are the mandatory context anchor: the level agents always need.
+  For a typical workspace this is a handful of files, not hundreds.
+- **Promotion is the act of adding an `_Overview.md`** to a deeper folder —
+  do it when a folder is a living workstream whose context you'll maintain.
+  The linter validates what exists; it never demands new overviews below
+  entity level.
+- Content folders inherit their context from the nearest scope above them and
+  from context groups (§6.4) — wiring a content folder into a group is the
+  cheap way to give it semantics without maintaining a context file.
+- Scopes MAY contain working files directly, collections, child scopes, and
+  content folders.
 
 ---
 
@@ -145,8 +145,9 @@ Collections are folders of homogeneous, dated records.
 
 ### 5.1 The pipe convention
 
-Scope folders below entity level MUST be named as pipe-separated paths that
-mirror their ancestry: `[NM-001]`
+Promoted scopes below entity level and collections MUST be named as
+pipe-separated paths that mirror their ancestry (content folders MAY follow
+the convention — it helps search — but are not linted): `[NM-001]`
 
 ```
 <Entity short name> | <Unit>
@@ -164,34 +165,36 @@ mirror their ancestry: `[NM-001]`
 ### 5.2 Special files
 
 - Context files are prefixed `_` so they sort first: `_Overview.md`,
-  `_Tasks.md`, `_PROTOCOL.md`.
-- Dates anywhere in names MUST be ISO `YYYY-MM-DD` (or `YYYY-MM` for months).
-  `[NM-002]`
+  `_Tasks.md`, `_Index.md`. (`AGENTS.md` is unprefixed deliberately — it
+  follows the cross-vendor agent auto-discovery naming standard.)
+- Dates in the names of promoted scopes MUST be ISO `YYYY-MM-DD` (or
+  `YYYY-MM` for months); content folders are not linted. `[NM-002]`
 - Entity folder names MUST NOT contain pipes. `[NM-003]`
 
 ---
 
 ## 6. Context files
 
-### 6.1 `_Overview.md` (required per scope)
+### 6.1 `_Overview.md` (entities and promoted scopes)
 
-The workhorse. Required sections, in order: `[OV-001]`
+The workhorse — and deliberately **free-form**: its presence is what makes a
+folder a scope; its content is not linted. The template recommends a proven
+skeleton, but a two-line overview that a human actually maintains beats a
+five-section stub nobody fills in.
+
+Recommended sections (the template ships these; tooling like the index
+generator reads "What it is" when present):
 
 | Section | Content |
 |---|---|
 | `## What it is` | 1–3 sentences: what this scope is, the org's remit, who owns it |
 | `## Active workstreams` | bullet list: **name** — one-line status → folder/file link |
 | `## Key people` | client side / org side, with roles and emails where known |
-| `## Recent activity` | newest-first dated one-liners → links; cap ~10 `[OV-002]` |
+| `## Recent activity` | newest-first dated one-liners → links; keep ~10 |
 | `## Reference` | links: key docs, dashboards, production folders, related scopes |
 
-Additional sections MAY be inserted between `Key people` and `Recent activity`
-(the reference workspace uses `## Brands`, `## Infrastructure` — both good
-practice for entity scopes with shared stack details).
-
-The **root** `_Overview.md` uses the same skeleton, where "What it is"
-identifies the workspace owner and what the workspace covers. (Topology is
-declared in `_Workspace.yaml`, not here.)
+The **root** `_Overview.md` identifies the workspace owner and what the
+workspace covers. (Topology is declared in `_Workspace.yaml`, not here.)
 
 ### 6.2 `_Tasks.md` (optional per scope)
 
@@ -213,7 +216,7 @@ Open commitments that outlive a single meeting. Format:
 - Action items in WIP notes are the *origin* of tasks; promoting one to
   `_Tasks.md` is a judgement call — promote what must survive the week.
 
-### 6.3 `_PROTOCOL.md` (workspace root, required)
+### 6.3 `AGENTS.md` (workspace root, required)
 
 The agent-facing rulebook, generated by the provisioning tool from this spec,
 the active profile, and `_Workspace.yaml`. It declares the spec version and
@@ -221,7 +224,79 @@ profile, renders the declared topology as its Map section, and condenses the
 operating rules (§7–8) so that *any* agent — regardless of vendor — can be
 pointed at the workspace root and behave correctly. `[ST-005]`
 
+The filename follows the cross-vendor `AGENTS.md` convention that agentic
+tools increasingly auto-discover, minimising per-agent configuration. Vendor
+files (`CLAUDE.md`, `GEMINI.md`…) SHOULD reduce to a pointer at `AGENTS.md`
+plus vendor-specific notes. (Renamed from `_PROTOCOL.md` in spec v0.5;
+adoption tooling archives the legacy file.)
+
 ---
+
+### 6.4 Context groups (optional capability)
+
+The folder tree answers "where does X live"; **context groups** answer "what
+belongs together" — a semantic layer of cross-cutting, many-to-many
+associations between folders. Examples: *Companies I've worked at*, *MMM
+clients*, *Offline-conversions deployments*.
+
+Groups are declared **per folder**. Any folder MAY contain a context
+directory (its name fixed workspace-wide by the `context` mount declaration,
+default `_Context`) holding one markdown file per group. A group's members are
+**descendant folders of the folder that contains the context directory**,
+referenced by path relative to that folder:
+
+```markdown
+# at Clients/_Context/companies-i-worked-at.md
+---
+name: companies-i-worked-at        # slug, kebab-case, matches filename
+title: Companies I've worked at
+members:
+  - path: Incubeta                  # = Clients/Incubeta
+    note: current employer, 2024–present
+  - path: Old Holdings/Previous Co  # any descendant depth is allowed
+---
+
+Free-text description. Both humans and agents read this to understand what
+membership in this group means.
+```
+
+- A group file MUST have `name`, `title`, and a `members` list; each member's
+  `path` is a folder path relative to the folder containing the context
+  directory; `note` is optional. `[CX-001]`
+- Member paths SHOULD exist under that folder; a missing member is flagged,
+  not fatal (folders get renamed). `[CX-002]`
+- A folder may belong to any number of groups. v0.4 members are folders only.
+- Declare a group in the context directory of the **lowest common ancestor**
+  of its members — root-level groups can span the whole workspace; a
+  client-folder group stays local and travels with the folder.
+- **Inheritance flows down.** A folder's effective context is the set of
+  groups it is directly a member of, plus every group any of its ancestors is
+  a member of. Declare membership at the highest folder where it is true;
+  never repeat it for descendants.
+- The `context` mount in `_Workspace.yaml` declares the root level's context
+  directory and fixes the directory *name* used at every level.
+- Agents resolving a folder's context MUST check each ancestor level's context
+  directory for memberships. Expanding a group means: each member folder and
+  all of its descendants. Group files are the authoritative source of declared
+  associations — consult them before falling back to search.
+- Removing a group follows the archive rule (§8): its file moves to the
+  archive mount, never deleted.
+
+### 6.5 `_Index.md` (workspace root, generated, recommended)
+
+A single generated map of the workspace — every scope with its one-line "what
+it is", every context group with its members — regenerated by tooling whenever
+a repair plan is applied or context groups are saved.
+
+Its purpose is the **retrieval tier**: assistants that reach the workspace
+through embedding/search connectors (rather than agentic file access) cannot
+be relied on to walk the tree or read rulebooks, but a single high-recall
+document surfaces for almost any broad query about the workspace. `_Index.md`
+is the `llms.txt` pattern applied to a Drive.
+
+- `_Index.md` is a derived artifact: never edit it by hand, never treat it as
+  canonical — the tree and the context dirs are the source of truth.
+- It is exempt from ST-004 (it does not need declaring in `_Workspace.yaml`).
 
 ## 7. Memory
 
@@ -276,27 +351,29 @@ Severities: **error** (violates a MUST), **warn** (violates a SHOULD),
 
 | ID | Sev | Rule |
 |---|---|---|
-| ST-001 | error | Root contains `_Workspace.yaml`, `_PROTOCOL.md`, `_Overview.md` |
+| ST-001 | error | Root contains `_Workspace.yaml`, `AGENTS.md`, `_Overview.md` |
 | ST-002 | error | Every mount declared in `_Workspace.yaml` exists |
 | ST-003 | error | Journal, templates, and archive capabilities are mounted; ≥1 area declared |
 | ST-004 | warn | No undeclared loose files / top-level folders at root |
-| ST-005 | error | `_PROTOCOL.md` in sync with `_Workspace.yaml` (version, profile, map) |
-| SC-001 | error | Every scope folder has `_Overview.md` |
-| SC-002 | warn | No per-type subfolders (`Reports/`, `Briefs/`…) inside scopes |
-| SC-003 | info | Asset folders are referenced from parent overview |
-| SC-004 | warn | Area folder is unclassifiable (no overview, no reserved suffix) |
+| ST-005 | error | `AGENTS.md` in sync with `_Workspace.yaml` (version, profile, map) |
+| SC-001 | error | Every **entity** (depth-1 folder in an area) has `_Overview.md` |
 | CL-001 | error | WIP note files are named `YYYY-MM-DD.md` |
 | CL-002 | warn | WIP note follows template sections (Discussion/Decisions/Actions) |
-| NM-001 | error | Pipe-name prefix mirrors ancestry (short-name aware) |
-| NM-002 | warn | Dates in names are ISO format |
+| NM-001 | error | **Promoted scopes** and collections: pipe-name mirrors ancestry |
+| NM-002 | warn | **Promoted scopes**: dates in names are ISO format |
 | NM-003 | error | Entity folder names contain no pipes |
-| OV-001 | error | `_Overview.md` has the five required sections in order |
-| OV-002 | info | Recent activity ≤ ~10 entries, newest first |
 | TK-001 | warn | `_Tasks.md` items follow the open/done format |
 | JR-001 | error | Journal files at `<journal mount>/YYYY/YYYY-MM/YYYY-MM-DD.md` |
 | JR-002 | info | Journal lines link out (index, not substance) |
 | JR-003 | warn | File-changing agent sessions appear in `## Agent activity` |
 | AR-001 | error | `Archive/` mirrors original paths; nothing deleted |
+| CX-001 | error | Context group files have valid `name`, `title`, `members` |
+| CX-002 | warn | Context group member paths exist under the declaring folder |
+
+Removed in v0.6 (content-by-default pivot): SC-002 (per-type subfolders),
+SC-003 (asset registration), SC-004 (unclassifiable folders), OV-001
+(required overview sections), OV-002 (recent-activity cap). Content folders
+are not lint subjects; overview content is free-form.
 
 ---
 

@@ -16,6 +16,8 @@ that structure on a connected Google Drive.
 | M1 | Next.js app skeleton + Google OAuth wiring + read-only auditor | 🟢 |
 | M2 | Scaffold flow — provision a fresh spec-compliant workspace | 🟢 |
 | M3 | Adoption flow — propose-then-apply migration of existing folders | 🟢 |
+| M3.5 | Context groups — collapsible-tree canvas, descendant members, downward inheritance (spec v0.4) | 🟢 |
+| M3.6 | Agent-readiness: AGENTS.md rulebook (auto-discovery standard) + generated `_Index.md` RAG map (spec v0.5) | 🟢 |
 | M4 | Cloud Run deployment, incubeta.com-restricted OAuth | ⬜ |
 | Later | GTM container audit module, contacts, shared team zones | ⬜ |
 
@@ -49,6 +51,12 @@ and `_PROTOCOL.md` files for local workspaces too.
 - `POST /api/workspaces/:id/proposals` `{kind: scaffold|adopt}` → plan (no writes)
 - `POST /api/proposals/:pid/apply` `{selected?: number[]}` → applies ops
   (defaults to the plan's safe selection; risky ops must be opted into)
+- `GET /api/workspaces/:id/tree?path=X&depth=4` → folder subtree under X
+- `GET|PUT /api/workspaces/:id/context?path=X` → read/write the context groups
+  declared at folder X (root when omitted). Members are descendant folder
+  paths relative to X; subfolders inherit ancestors' groups. PUT writes one
+  markdown file per group to `X/_Context/`; removed groups are archived,
+  never deleted.
 
 ## Safety contract
 

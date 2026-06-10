@@ -1,12 +1,11 @@
 import { Connector, Entry } from "./connector";
 import { loadManifest, ruleDef } from "./spec";
+import { parseGroupFile, DEFAULT_CONTEXT_DIR } from "./context";
 import {
   parseWorkspaceYaml,
   WorkspaceDecl,
   allowedForms,
   checkPipeName,
-  headings,
-  sectionLines,
   PIPE,
 } from "./workspace";
 
@@ -25,6 +24,7 @@ export type AuditStats = {
   overviews: number;
   wipNotes: number;
   journalDays: number;
+  groups?: number;
 };
 
 export type AuditResult = {
@@ -38,12 +38,15 @@ const WIP_FILE = /^\d{4}-\d{2}-\d{2}\.md$/;
 const JOURNAL_FILE = /^\d{4}-\d{2}-\d{2}\.md$/;
 const NON_ISO_DATE = /\b(\d{1,2}[./]\d{1,2}[./]\d{4}|\((January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{4}\))/;
 
+// v0.6 content-by-default: folders are content unless promoted by containing
+// the context file. The linter validates what exists — it never demands
+// context machinery below entity level.
 export async function runAudit(c: Connector, profileName = "incubeta"): Promise<AuditResult> {
   const manifest = loadManifest();
   const profile = manifest.profiles[profileName] ?? {};
   const findings: Finding[] = [];
   const stats: AuditStats = {
-    errors: 0, warns: 0, infos: 0, scopes: 0, overviews: 0, wipNotes: 0, journalDays: 0,
+    errors: 0, warns: 0, infos: 0, scopes: 0, overviews: 0, wipNotes: 0, journalDays: 0, groups: 0,
   };
 
   const add = (rule: string, path: string, message: string) => {
@@ -71,7 +74,6 @@ export async function runAudit(c: Connector, profileName = "incubeta"): Promise<
   }
 
   if (!decl?.mounts) {
-    // Without a declaration we can't audit deeper — report and stop.
     return { findings, stats, decl };
   }
 
@@ -80,6 +82,7 @@ export async function runAudit(c: Connector, profileName = "incubeta"): Promise<
     journal: decl.mounts.journal ?? "",
     templates: decl.mounts.templates ?? "",
     archive: decl.mounts.archive ?? "",
+    context: decl.mounts.context ?? "",
   };
 
   // ST-003 — capabilities mounted, >=1 area
@@ -93,7 +96,13 @@ export async function runAudit(c: Connector, profileName = "incubeta"): Promise<
   }
 
   // ST-002 — declared mounts exist
-  const declaredPaths = [...mounts.areas, mounts.journal, mounts.templates, mounts.archive].filter(Boolean);
+  const declaredPaths = [
+    ...mounts.areas,
+    mounts.journal,
+    mounts.templates,
+    mounts.archive,
+    mounts.context,
+  ].filter(Boolean);
   for (const p of declaredPaths) {
     if (!rootNames.has(p)) add("ST-002", p, `Declared mount "${p}" does not exist`);
   }
@@ -101,6 +110,7 @@ export async function runAudit(c: Connector, profileName = "incubeta"): Promise<
   // ST-004 — undeclared root items
   const allowance = new Set([
     ...manifest.workspace.required_root_files,
+    ...(manifest.workspace.optional_root_files ?? []),
     ...declaredPaths,
     ...((profile.root_file_allowance as string[] | undefined) ?? []),
   ]);
@@ -110,32 +120,44 @@ export async function runAudit(c: Connector, profileName = "incubeta"): Promise<
     }
   }
 
-  // ST-005 — protocol in sync
-  const protocol = await c.read("_PROTOCOL.md");
+  // ST-005 — rulebook in sync
+  const rulebook = manifest.workspace.rulebook_file;
+  const protocol = await c.read(rulebook);
   if (protocol !== null) {
     if (decl.spec_version && !protocol.includes(String(decl.spec_version))) {
-      add("ST-005", "_PROTOCOL.md", `Does not mention declared spec version ${decl.spec_version}`);
+      add("ST-005", rulebook, `Does not mention declared spec version ${decl.spec_version}`);
     }
     if (decl.profile && !protocol.includes(String(decl.profile))) {
-      add("ST-005", "_PROTOCOL.md", `Does not mention declared profile "${decl.profile}"`);
+      add("ST-005", rulebook, `Does not mention declared profile "${decl.profile}"`);
     }
   }
 
-  // Root overview
-  const rootOverview = await c.read("_Overview.md");
-  if (rootOverview !== null) checkOverview("_Overview.md", rootOverview);
+  if (await c.exists("_Overview.md")) stats.overviews++;
+
+  const ctxDirName = mounts.context || DEFAULT_CONTEXT_DIR;
 
   // ---- Areas ----
   for (const area of mounts.areas) {
     if (!rootNames.has(area)) continue;
-    const entities = await c.list(area);
-    for (const entity of entities) {
+    for (const entity of await c.list(area)) {
       if (entity.kind !== "folder") continue;
+      if (entity.name === ctxDirName) {
+        await checkContextDir(entity.path, area);
+        continue;
+      }
       if (entity.name.includes("|")) {
         add("NM-003", entity.path, `Entity folder name contains a pipe: "${entity.name}"`);
       }
-      stats.scopes++;
-      await checkScope(entity, [allowedForms(entity.name)], true);
+      const children = await c.list(entity.path);
+      const hasOverview = children.some((e) => e.name === manifest.scopes.context_file);
+      if (!hasOverview) {
+        // SC-001 — entities are the mandatory context anchor
+        add("SC-001", entity.path, `Entity is missing ${manifest.scopes.context_file}`);
+      } else {
+        stats.scopes++;
+        stats.overviews++;
+      }
+      await walkFolder(entity, children, [allowedForms(entity.name)]);
     }
   }
 
@@ -144,45 +166,19 @@ export async function runAudit(c: Connector, profileName = "incubeta"): Promise<
     await walkJournal(mounts.journal, mounts.journal);
   }
 
+  // ---- Root-level context groups (SPEC §6.4) ----
+  if (mounts.context && rootNames.has(mounts.context)) {
+    await checkContextDir(mounts.context, "");
+  }
+
   return { findings, stats, decl };
 
   // ---------- helpers ----------
 
-  function checkOverview(path: string, md: string) {
-    stats.overviews++;
-    const hs = headings(md);
-    const required = manifest.scopes.overview_required_sections;
-    let cursor = -1;
-    const missing: string[] = [];
-    for (const sec of required) {
-      const idx = hs.indexOf(sec);
-      if (idx === -1) missing.push(sec);
-      else if (idx < cursor) {
-        add("OV-001", path, `Section "${sec}" out of order`);
-        cursor = idx;
-      } else cursor = idx;
-    }
-    if (missing.length) {
-      add("OV-001", path, `Missing section(s): ${missing.join(", ")}`);
-    }
-    const recent = sectionLines(md, "Recent activity").filter((l) => l.trim().startsWith("- "));
-    if (recent.length > manifest.scopes.recent_activity_cap + 2) {
-      add("OV-002", path, `Recent activity has ${recent.length} entries (cap ~${manifest.scopes.recent_activity_cap})`);
-    }
-  }
-
-  async function checkScope(folder: Entry, chain: Set<string>[], isEntity: boolean) {
-    const children = await c.list(folder.path);
-    const overview = children.find((e) => e.name === manifest.scopes.context_file);
-    let parentOverviewMd: string | null = null;
-
-    if (!overview) {
-      add("SC-001", folder.path, `Scope is missing ${manifest.scopes.context_file}`);
-    } else {
-      parentOverviewMd = await c.read(overview.path);
-      if (parentOverviewMd !== null) checkOverview(overview.path, parentOverviewMd);
-    }
-
+  // Walk every folder; lint only entities, promoted scopes, and collections.
+  // Content folders pass through silently (but may contain context dirs and
+  // promoted scopes deeper down, so the walk continues).
+  async function walkFolder(folder: Entry, children: Entry[], chain: Set<string>[]) {
     const tasks = children.find((e) => e.name === "_Tasks.md");
     if (tasks) {
       const md = await c.read(tasks.path);
@@ -192,19 +188,15 @@ export async function runAudit(c: Connector, profileName = "incubeta"): Promise<
     }
 
     for (const child of children) {
-      // NM-002 — non-ISO dates in any name
-      if (NON_ISO_DATE.test(child.name)) {
-        add("NM-002", child.path, `Name contains a non-ISO date: "${child.name}"`);
-      }
       if (child.kind !== "folder") continue;
 
-      const pipeCheck = checkPipeName(child.name, chain);
-      const lastSegment = child.name.split(PIPE).pop() ?? child.name;
-
-      // SC-002 — per-type subfolders
-      if (manifest.scopes.forbidden_subfolders.includes(lastSegment)) {
-        add("SC-002", child.path, `Per-type subfolder "${lastSegment}" — files should live directly in the scope`);
+      if (child.name === ctxDirName) {
+        await checkContextDir(child.path, folder.path);
+        continue;
       }
+
+      const lastSegment = child.name.split(PIPE).pop() ?? child.name;
+      const pipeCheck = checkPipeName(child.name, chain);
 
       if (lastSegment === WIP_SUFFIX) {
         if (!pipeCheck.ok) {
@@ -215,35 +207,56 @@ export async function runAudit(c: Connector, profileName = "incubeta"): Promise<
       }
 
       const grandchildren = await c.list(child.path);
-      const hasOverview = grandchildren.some((e) => e.name === manifest.scopes.context_file);
-      const looksPiped = child.name.includes(PIPE);
+      const promoted = grandchildren.some((e) => e.name === manifest.scopes.context_file);
 
-      if (hasOverview || looksPiped) {
-        // It's a scope
+      if (promoted) {
         stats.scopes++;
+        stats.overviews++;
         if (!pipeCheck.ok) {
           add("NM-001", child.path, `Scope name should start with "${pipeCheck.expectedPrefix}${PIPE}…" mirroring its ancestry`);
         }
-        const ownForms = pipeCheck.ownSegment ? allowedForms(pipeCheck.ownSegment) : allowedForms(child.name);
-        await checkScope(child, [...chain, ownForms], false);
-      } else {
-        // Asset folder or unclassifiable
-        add("SC-004", child.path, `Folder is neither a scope (no ${manifest.scopes.context_file}) nor a recognised collection`);
-        if (parentOverviewMd && !parentOverviewMd.includes(child.name)) {
-          add("SC-003", child.path, `Asset folder not referenced from parent ${manifest.scopes.context_file}`);
+        if (NON_ISO_DATE.test(child.name)) {
+          add("NM-002", child.path, `Scope name contains a non-ISO date: "${child.name}"`);
+        }
+      }
+
+      const ownForms = pipeCheck.ownSegment
+        ? allowedForms(pipeCheck.ownSegment)
+        : allowedForms(child.name);
+      await walkFolder(child, grandchildren, [...chain, ownForms]);
+    }
+  }
+
+  // Validate a context directory: group files parse, slugs match filenames,
+  // members exist under the containing folder.
+  async function checkContextDir(dirPath: string, parentPath: string) {
+    for (const e of await c.list(dirPath)) {
+      if (e.kind !== "file" || !e.name.endsWith(".md")) continue;
+      const md = await c.read(e.path);
+      const g = md !== null ? parseGroupFile(md) : null;
+      if (!g) {
+        add("CX-001", e.path, "Invalid context group file (needs frontmatter with name, title, members)");
+        continue;
+      }
+      stats.groups = (stats.groups ?? 0) + 1;
+      if (`${g.slug}.md` !== e.name) {
+        add("CX-001", e.path, `Group name "${g.slug}" does not match filename`);
+      }
+      for (const m of g.members) {
+        const memberPath = parentPath ? `${parentPath}/${m.path}` : m.path;
+        if (m.path.startsWith("/") || m.path.split("/").some((s) => s === "..")) {
+          add("CX-002", e.path, `Member "${m.path}" must be a relative descendant path`);
+        } else if (!(await c.exists(memberPath))) {
+          add("CX-002", e.path, `Member "${m.path}" does not exist under ${parentPath || "(root)"}`);
         }
       }
     }
-    void isEntity;
   }
 
   async function checkWipFolder(folder: Entry) {
     const notes = await c.list(folder.path);
     for (const n of notes) {
-      if (n.kind === "folder") {
-        add("SC-004", n.path, "Folder inside a WIP Notes collection");
-        continue;
-      }
+      if (n.kind === "folder") continue;
       if (!WIP_FILE.test(n.name)) {
         add("CL-001", n.path, `WIP note not named YYYY-MM-DD.md: "${n.name}"`);
         continue;

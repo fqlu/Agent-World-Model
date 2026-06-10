@@ -5,8 +5,9 @@ import { buildScaffoldPlan, ScaffoldOptions } from "./scaffold";
 import { buildAdoptionPlan } from "./adopt";
 import { Op, applyOps, journalAgentActivity, OpResult } from "./ops";
 import { parseWorkspaceYaml } from "./workspace";
+import { writeIndex } from "./index-gen";
 
-export type PlanPayload = { ops: Op[]; notes: string[] };
+export type PlanPayload = { ops: Op[]; notes: string[]; manual?: string[] };
 
 function scaffoldOpts(wsId: number): ScaffoldOptions {
   const ws = q.getWorkspace(wsId);
@@ -35,7 +36,7 @@ export async function createProposalSvc(
   if (!ws) throw new Error(`Workspace ${wsId} not found`);
   let payload: PlanPayload;
   if (kind === "scaffold") {
-    payload = { ops: buildScaffoldPlan(scaffoldOpts(wsId)), notes: [] };
+    payload = { ops: buildScaffoldPlan(scaffoldOpts(wsId)), notes: [], manual: [] };
   } else {
     payload = await buildAdoptionPlan(connectorFor(ws), scaffoldOpts(wsId));
   }
@@ -74,5 +75,33 @@ export async function applyProposalSvc(
 
   const failed = results.some((r) => !r.skipped && !r.ok);
   q.finishProposal(proposalId, failed ? "applied_with_errors" : "applied", results);
+
+  // Regenerate the workspace index (SPEC §6.5) — best-effort derived artifact
+  try {
+    await writeIndex(c, ws.name);
+  } catch {
+    // index generation must never fail an apply
+  }
   return results;
+}
+
+export async function regenerateIndexSvc(wsId: number): Promise<boolean> {
+  const ws = q.getWorkspace(wsId);
+  if (!ws) throw new Error(`Workspace ${wsId} not found`);
+  const c = connectorFor(ws);
+  const ok = await writeIndex(c, ws.name);
+  if (ok) {
+    try {
+      const declRaw = await c.read("_Workspace.yaml");
+      const decl = declRaw ? parseWorkspaceYaml(declRaw) : null;
+      await journalAgentActivity(
+        c,
+        decl?.mounts?.journal ?? "Journal",
+        `${ws.name} — regenerated _Index.md`,
+      );
+    } catch {
+      // journal is best-effort here too
+    }
+  }
+  return ok;
 }

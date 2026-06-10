@@ -11,16 +11,18 @@ export type SpecManifest = {
   spec_version: string;
   workspace: {
     manifest_file: string;
+    rulebook_file: string;
     required_root_files: string[];
+    optional_root_files?: string[];
     required_capabilities: string[];
     areas_min: number;
   };
   scopes: {
     context_file: string;
+    promotion: string;
+    entity_overview_required: boolean;
     optional_files: string[];
-    overview_required_sections: string[];
-    recent_activity_cap: number;
-    forbidden_subfolders: string[];
+    recommended_sections: string[];
   };
   collections: {
     wip_notes: { suffix: string; file_pattern: string; required_sections: string[] };
@@ -31,7 +33,13 @@ export type SpecManifest = {
 };
 
 export type ProfileDef = {
-  default_topology?: { areas: string[]; journal: string; templates: string; archive: string };
+  default_topology?: {
+    areas: string[];
+    journal: string;
+    templates: string;
+    archive: string;
+    context?: string;
+  };
   draft_lifecycle?: { working_prefix: string; production_prefixes: string[] };
   status_flags?: Record<string, string>;
   root_file_allowance?: string[];
