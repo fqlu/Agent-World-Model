@@ -2,7 +2,7 @@
 
 **Version:** 0.8.0 (draft)
 **Status:** 🟠 Draft — under review by James Lu
-**Reference implementation:** Incubeta Master Folder (jamesfqlu@gmail.com Drive)
+**Reference implementation:** a personal knowledge-work Drive (`incubeta` profile)
 
 ---
 

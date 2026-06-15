@@ -14,7 +14,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Incubeta Hub",
+  title: "Agent World Model",
   description: "Drive Context Protocol — provision, audit, and repair agent-ready workspaces",
 };
 
@@ -33,7 +33,7 @@ export default function RootLayout({
           <div className="mx-auto flex max-w-5xl items-baseline gap-3 px-6 py-4">
             <Link href="/" className="text-lg font-semibold tracking-tight text-zinc-900">
               <span className="mr-2 inline-block h-2.5 w-2.5 rounded-sm bg-indigo-600 align-baseline" />
-              Incubeta Hub
+              Agent World Model
             </Link>
             <span className="text-sm text-zinc-500">Drive Context Protocol</span>
             <nav className="ml-auto">

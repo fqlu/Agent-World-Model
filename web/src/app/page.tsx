@@ -90,7 +90,7 @@ export default function Home() {
           <input type="hidden" name="kind" value="local" />
           <label className="block text-sm font-medium text-zinc-700">
             Name
-            <input name="name" required placeholder="Incubeta Master Folder" className="input" />
+            <input name="name" required placeholder="My Workspace" className="input" />
           </label>
           <div className="text-sm font-medium text-zinc-700">
             Folder

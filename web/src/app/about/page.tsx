@@ -1,7 +1,7 @@
 import Link from "next/link";
 
 export const metadata = {
-  title: "About — Incubeta Hub",
+  title: "About — Agent World Model",
 };
 
 const STEPS = [
@@ -85,7 +85,7 @@ export default function AboutPage() {
           A governance layer that makes your Drive agent-ready
         </h1>
         <p className="mt-4 text-zinc-700">
-          Incubeta Hub installs and maintains the <strong>Drive Context Protocol</strong> — a
+          This tool installs and maintains the <strong>Drive Context Protocol</strong> — a
           small set of conventions that turn an ordinary folder structure into something both
           humans and AI agents can navigate, act in, and remember things in, without guesswork.
         </p>

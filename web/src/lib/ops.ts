@@ -60,7 +60,7 @@ export async function journalAgentActivity(
   const min = String(now.getMinutes()).padStart(2, "0");
   const day = `${yyyy}-${mm}-${dd}`;
   const path = `${journalMount}/${yyyy}/${yyyy}-${mm}/${day}.md`;
-  const appName = process.env.HUB_APP_NAME ?? "Incubeta Hub";
+  const appName = process.env.HUB_APP_NAME ?? "Agent World Model";
   const line = `- ${hh}:${min} · ${appName} · ${message}`;
 
   const heading = "## Agent activity";

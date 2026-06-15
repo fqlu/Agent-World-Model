@@ -1,4 +1,4 @@
-# Incubeta Hub
+# Agent World Model
 
 A protocol plus its installer: a standard structure for a knowledge Drive that
 humans and AI agents share, and a web app that provisions, audits, and repairs
