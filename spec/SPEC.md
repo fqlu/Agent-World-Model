@@ -1,6 +1,6 @@
 # Drive Context Protocol — Specification
 
-**Version:** 0.8.0 (draft)
+**Version:** 0.9.0 (draft)
 **Status:** 🟠 Draft — under review by James Lu
 **Reference implementation:** a personal knowledge-work Drive (`incubeta` profile)
 
@@ -50,7 +50,7 @@ declares where those primitives are mounted in a root topology manifest,
 `_Workspace.yaml`:
 
 ```yaml
-spec_version: 0.8.0
+spec_version: 0.9.0
 profile: incubeta
 mounts:
   areas: [Clients, Internal]   # scope-bearing folders (≥1, any names)
@@ -388,6 +388,28 @@ membership), compiled from the markdown into one JSON document.
 - Derived artifact — regenerated whenever entities, relationships, or context
   groups change; never hand-edited; the files remain canonical.
 - Exempt from ST-004 (it does not need declaring in `_Workspace.yaml`).
+
+### 6.9 Freshness & the maintenance loop (app-maintained)
+
+The files are canonical, but they change — humans and agents edit them between
+app sessions. A world model that doesn't notice change goes stale silently.
+The maintenance loop keeps state current:
+
+1. **Detect.** Tooling keeps a content manifest (path → hash) of the workspace
+   in its own state (NOT in the Drive — it is rebuildable app bookkeeping).
+   Comparing a fresh walk against the stored manifest yields the **drift**
+   since last sync: files added, modified, removed.
+2. **Re-derive.** On sync, the derived artifacts (`_Index.md`, `_Model.json`)
+   are regenerated so the projection matches the files again.
+3. **Reflect (human/agent, not the tool).** Detection is deterministic;
+   *interpreting* the drift — proposing new entities, relationships, state
+   changes, activity lines — is reflection, which an agent does. The tool
+   emits a **reflection scaffold** (the list of changed files framed as a
+   task) for an agent to act on through the normal propose-then-apply flows.
+   The tool never invents semantic facts itself.
+
+This separation — deterministic detection + agent-driven reflection — keeps
+the core dependency-free and every model change human-reviewable.
 
 ## 7. Memory
 

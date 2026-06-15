@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { q } from "@/lib/db";
 import { runAuditAction, createProposalAction, regenerateIndexAction } from "@/app/actions";
 import type { AuditStats } from "@/lib/linter";
+import SyncPanel from "./sync-panel";
 
 export const dynamic = "force-dynamic";
 
@@ -33,6 +34,8 @@ export default async function WorkspacePage({ params }: { params: Promise<{ id: 
           <span className="font-mono">{ws.profile}</span>
         </p>
       </div>
+
+      <SyncPanel wsId={ws.id} />
 
       <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {/* 1 — Audit */}

@@ -7,6 +7,14 @@ import { Op, applyOps, journalAgentActivity, OpResult } from "./ops";
 import { parseWorkspaceYaml } from "./workspace";
 import { writeIndex } from "./index-gen";
 import { writeModel } from "./model-gen";
+import {
+  buildManifest,
+  detectChanges,
+  reflectionScaffold,
+  diffCount,
+  Manifest,
+  SyncReport,
+} from "./sync";
 
 export type PlanPayload = { ops: Op[]; notes: string[]; manual?: string[] };
 
@@ -85,6 +93,67 @@ export async function applyProposalSvc(
     // generation must never fail an apply
   }
   return results;
+}
+
+export async function detectSyncSvc(
+  wsId: number,
+): Promise<SyncReport & { syncedAt: string | null }> {
+  const ws = q.getWorkspace(wsId);
+  if (!ws) throw new Error(`Workspace ${wsId} not found`);
+  const row = q.getSyncState(wsId);
+  const stored: Manifest | null = row ? (JSON.parse(row.manifest) as Manifest) : null;
+  const report = await detectChanges(connectorFor(ws), stored);
+  return { ...report, syncedAt: row?.synced_at ?? null };
+}
+
+export async function applySyncSvc(wsId: number): Promise<{
+  report: SyncReport;
+  scaffold: string;
+  syncedAt: string | null;
+}> {
+  const ws = q.getWorkspace(wsId);
+  if (!ws) throw new Error(`Workspace ${wsId} not found`);
+  const c = connectorFor(ws);
+  const row = q.getSyncState(wsId);
+  const stored: Manifest | null = row ? (JSON.parse(row.manifest) as Manifest) : null;
+
+  // 1. detect drift (pre-write)
+  const report = await detectChanges(c, stored);
+
+  // 2. re-derive projections so they match the files again
+  try {
+    await writeIndex(c, ws.name);
+    await writeModel(c);
+  } catch {
+    /* generation is best-effort */
+  }
+
+  // 3. journal the sync (skipped on first baseline to keep it quiet)
+  if (!report.firstRun && diffCount(report.diff) > 0) {
+    try {
+      const declRaw = await c.read("_Workspace.yaml");
+      const journal = (declRaw ? parseWorkspaceYaml(declRaw) : null)?.mounts?.journal ?? "Journal";
+      const d = report.diff;
+      await journalAgentActivity(
+        c,
+        journal,
+        `synced — ${d.modified.length} modified, ${d.added.length} added, ${d.removed.length} removed; projections refreshed`,
+      );
+    } catch {
+      /* journal best-effort */
+    }
+  }
+
+  // 4. re-snapshot (captures the journal write + refreshed state) so the same
+  //    drift isn't reported again next time
+  const finalManifest = await buildManifest(c);
+  q.saveSyncState(wsId, finalManifest);
+
+  return {
+    report,
+    scaffold: reflectionScaffold(report.diff, row?.synced_at ?? null),
+    syncedAt: row?.synced_at ?? null,
+  };
 }
 
 export async function regenerateIndexSvc(wsId: number): Promise<boolean> {

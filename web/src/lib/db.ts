@@ -51,6 +51,11 @@ CREATE TABLE IF NOT EXISTS google_tokens (
   tokens TEXT NOT NULL,
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
+CREATE TABLE IF NOT EXISTS sync_state (
+  workspace_id INTEGER PRIMARY KEY REFERENCES workspaces(id),
+  manifest TEXT NOT NULL,
+  synced_at TEXT NOT NULL
+);
 `;
 
 export type WorkspaceRow = {
@@ -146,5 +151,16 @@ export const q = {
     (getDb().prepare("SELECT email FROM google_tokens ORDER BY email").all() as { email: string }[]).map(
       (r) => r.email,
     ),
+
+  getSyncState: (workspaceId: number) =>
+    getDb().prepare("SELECT manifest, synced_at FROM sync_state WHERE workspace_id = ?").get(workspaceId) as
+      | { manifest: string; synced_at: string }
+      | undefined,
+  saveSyncState: (workspaceId: number, manifest: unknown) =>
+    getDb()
+      .prepare(
+        "INSERT INTO sync_state (workspace_id, manifest, synced_at) VALUES (?,?,datetime('now')) ON CONFLICT(workspace_id) DO UPDATE SET manifest = excluded.manifest, synced_at = excluded.synced_at",
+      )
+      .run(workspaceId, JSON.stringify(manifest)),
 };
 

@@ -47,6 +47,11 @@ When a name or system recurs (a colleague, a GTM container, a topic), the
 entity file is its canonical record — resolve references there rather than
 re-deriving from prose. Each carries provenance (`source`, `confirmed`).
 
+A **reflection scaffold** may be handed to you after a sync — a list of files
+that changed in the workspace. When you receive one, read those files and
+propose world-model updates (entities, relationships, overview activity,
+state) grounded in them; don't invent facts the files don't support.
+
 **Relationships** are typed edges in an entity's `relations:` frontmatter
 (`predicate`, `target`, `note`) — the verbs of the world model (leads, owns,
 uses, deployed-for, depends-on…). To answer "who/what relates to X", read
