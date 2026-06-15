@@ -1,6 +1,6 @@
 # Drive Context Protocol — machine-readable manifest
 # Mirrors SPEC.md §9. The linter consumes this file; SPEC.md is for humans.
-spec_version: 0.7.0
+spec_version: 0.8.0
 
 # Topology is declarative (SPEC §2): each workspace declares its own layout in
 # a root _Workspace.yaml; the linter validates against that declaration.
@@ -8,7 +8,7 @@ workspace:
   manifest_file: _Workspace.yaml
   rulebook_file: AGENTS.md             # cross-vendor agent auto-discovery standard
   required_root_files: [_Workspace.yaml, AGENTS.md, _Overview.md]     # ST-001
-  optional_root_files: [_Index.md]     # generated artifact (§6.5), exempt from ST-004
+  optional_root_files: [_Index.md, _Model.json]  # generated artifacts (§6.5, §6.8), exempt from ST-004
   required_capabilities: [journal, templates, archive]                # ST-003
   optional_capabilities: [context, entities]                          # §6.4, §6.6
   areas_min: 1                                                        # ST-003
@@ -60,6 +60,24 @@ entities:                        # §6.6 — the "cast" of the world model
   provenance: [source, confirmed]                # derived|asserted, last-confirmed date
   derive_first: true             # extracted from overviews; human confirms/enriches
 
+relationships:                   # §6.7 — the "edges" of the world model
+  stored_in: entity_frontmatter  # relations: [{predicate, target, note}]
+  predicates:                    # closed vocabulary (RL-001)
+    - leads
+    - owns
+    - works-on
+    - member-of
+    - reports-to
+    - uses
+    - deployed-for
+    - depends-on
+    - related-to
+  target: entity_slug_or_scope_path              # RL-002
+
+projection:                      # §6.8 — generated world-model snapshot
+  file: "_Model.json"
+  derived: true                  # rebuilt from files; exempt from ST-004
+
 naming:
   pipe_separator: " | "
   entity_no_pipes: true              # NM-003
@@ -102,6 +120,8 @@ rules:
   - { id: CX-002, severity: warn,  summary: context group member paths exist under declaring folder }
   - { id: EN-001, severity: error, summary: entity files valid (name + kind person/system/concept) }
   - { id: EN-002, severity: warn,  summary: entity slug matches filename }
+  - { id: RL-001, severity: error, summary: relationship predicate in vocabulary }
+  - { id: RL-002, severity: warn,  summary: relationship target resolves to entity or scope }
 
 # Profiles layer org-specific rituals and template overrides onto the core
 # protocol. Template overrides live in spec/templates/profiles/<profile>/ and

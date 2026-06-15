@@ -4,6 +4,7 @@ import { useCallback, useMemo, useState } from "react";
 
 type EntityKind = "person" | "system" | "concept";
 type Attr = Record<string, string>;
+type Relation = { predicate: string; target: string; note?: string };
 type Entity = {
   slug: string;
   name: string;
@@ -12,8 +13,10 @@ type Entity = {
   source: "derived" | "asserted";
   confirmed?: string;
   attributes: Attr;
+  relations: Relation[];
   notes: string;
 };
+type ScopeOpt = { path: string; name: string };
 type Candidate = {
   name: string;
   kind: EntityKind;
@@ -33,13 +36,27 @@ const KIND_BADGE: Record<EntityKind, string> = {
   concept: "bg-violet-100 text-violet-700",
 };
 
+function slugify(name: string): string {
+  return name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 80) || "entity";
+}
+
 function attrLine(a: Attr): string {
   return Object.entries(a)
     .map(([k, v]) => `${k}: ${v}`)
     .join(" · ");
 }
 
-export default function EntitiesEditor({ wsId, initial }: { wsId: number; initial: Entity[] }) {
+export default function EntitiesEditor({
+  wsId,
+  initial,
+  predicates,
+  scopes,
+}: {
+  wsId: number;
+  initial: Entity[];
+  predicates: string[];
+  scopes: ScopeOpt[];
+}) {
   const [entities, setEntities] = useState<Entity[]>(initial);
   const [candidates, setCandidates] = useState<Candidate[] | null>(null);
   const [picked, setPicked] = useState<Set<number>>(new Set());
@@ -88,6 +105,7 @@ export default function EntitiesEditor({ wsId, initial }: { wsId: number; initia
         aliases: [],
         source: "derived",
         attributes: c.attributes,
+        relations: [],
         notes: `Derived from overviews (${c.foundIn.length} scope${c.foundIn.length === 1 ? "" : "s"}).`,
       });
     });
@@ -102,7 +120,7 @@ export default function EntitiesEditor({ wsId, initial }: { wsId: number; initia
     if (!name) return;
     setEntities((es) => [
       ...es,
-      { slug: "", name, kind: newKind, aliases: [], source: "asserted", attributes: {}, notes: "" },
+      { slug: "", name, kind: newKind, aliases: [], source: "asserted", attributes: {}, relations: [], notes: "" },
     ]);
     setNewName("");
   }, [newName, newKind]);
@@ -114,6 +132,45 @@ export default function EntitiesEditor({ wsId, initial }: { wsId: number; initia
   const remove = useCallback((idx: number) => {
     setEntities((es) => es.filter((_, i) => i !== idx));
   }, []);
+
+  const addRelation = useCallback(
+    (idx: number) => {
+      setEntities((es) =>
+        es.map((e, i) =>
+          i === idx
+            ? { ...e, relations: [...e.relations, { predicate: predicates[0] ?? "related-to", target: "" }] }
+            : e,
+        ),
+      );
+    },
+    [predicates],
+  );
+
+  const updateRelation = useCallback((idx: number, rIdx: number, patch: Partial<Relation>) => {
+    setEntities((es) =>
+      es.map((e, i) =>
+        i === idx
+          ? { ...e, relations: e.relations.map((r, j) => (j === rIdx ? { ...r, ...patch } : r)) }
+          : e,
+      ),
+    );
+  }, []);
+
+  const removeRelation = useCallback((idx: number, rIdx: number) => {
+    setEntities((es) =>
+      es.map((e, i) => (i === idx ? { ...e, relations: e.relations.filter((_, j) => j !== rIdx) } : e)),
+    );
+  }, []);
+
+  // target options: other entities (by name) + promoted scopes (by path)
+  const targetOptions = useMemo(() => {
+    const ents = entities
+      .filter((e) => e.name.trim())
+      .map((e) => ({ value: e.slug || slugify(e.name), label: `${e.name} (entity)` }));
+    const scs = scopes.map((s) => ({ value: s.path, label: `${s.name} (scope)` }));
+    return [...ents, ...scs];
+  }, [entities, scopes]);
+
 
   const save = useCallback(async () => {
     setBusy("save");
@@ -281,6 +338,77 @@ export default function EntitiesEditor({ wsId, initial }: { wsId: number; initia
                             rows={2}
                             className="input text-xs"
                           />
+                          {/* Relationships */}
+                          <div className="rounded-lg border border-zinc-100 bg-zinc-50 p-2">
+                            <div className="flex items-center justify-between">
+                              <span className="text-xs font-medium text-zinc-600">
+                                Relationships
+                              </span>
+                              <button
+                                onClick={() => addRelation(idx)}
+                                className="text-xs font-medium text-indigo-600 hover:underline"
+                              >
+                                + add edge
+                              </button>
+                            </div>
+                            {e.relations.length === 0 ? (
+                              <p className="mt-1 text-xs text-zinc-400">
+                                No edges. Connect {e.name || "this"} to another entity or a scope.
+                              </p>
+                            ) : (
+                              <ul className="mt-1 space-y-1">
+                                {e.relations.map((r, rIdx) => (
+                                  <li key={rIdx} className="flex flex-wrap items-center gap-1">
+                                    <span className="text-xs text-zinc-400">{e.name || "this"}</span>
+                                    <select
+                                      value={r.predicate}
+                                      onChange={(ev) =>
+                                        updateRelation(idx, rIdx, { predicate: ev.target.value })
+                                      }
+                                      className="rounded border border-zinc-300 bg-white px-1 py-0.5 text-xs"
+                                    >
+                                      {predicates.map((p) => (
+                                        <option key={p} value={p}>
+                                          {p}
+                                        </option>
+                                      ))}
+                                    </select>
+                                    <select
+                                      value={r.target}
+                                      onChange={(ev) =>
+                                        updateRelation(idx, rIdx, { target: ev.target.value })
+                                      }
+                                      className="max-w-48 rounded border border-zinc-300 bg-white px-1 py-0.5 text-xs"
+                                    >
+                                      <option value="">— target —</option>
+                                      {targetOptions.map((o) => (
+                                        <option key={o.value} value={o.value}>
+                                          {o.label}
+                                        </option>
+                                      ))}
+                                      {r.target && !targetOptions.some((o) => o.value === r.target) && (
+                                        <option value={r.target}>{r.target} (unresolved)</option>
+                                      )}
+                                    </select>
+                                    <input
+                                      value={r.note ?? ""}
+                                      onChange={(ev) =>
+                                        updateRelation(idx, rIdx, { note: ev.target.value })
+                                      }
+                                      placeholder="note"
+                                      className="w-28 rounded border border-zinc-300 bg-white px-1 py-0.5 text-xs"
+                                    />
+                                    <button
+                                      onClick={() => removeRelation(idx, rIdx)}
+                                      className="text-xs text-red-500 hover:underline"
+                                    >
+                                      ×
+                                    </button>
+                                  </li>
+                                ))}
+                              </ul>
+                            )}
+                          </div>
                         </div>
                         <div className="flex flex-col items-end gap-2">
                           {e.source === "derived" && (

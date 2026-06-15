@@ -70,7 +70,9 @@ export async function PUT(
     // Context changed — refresh the workspace index (best-effort)
     try {
       const { writeIndex } = await import("@/lib/index-gen");
+      const { writeModel } = await import("@/lib/model-gen");
       await writeIndex(c, ws.name);
+      await writeModel(c);
     } catch {}
     return NextResponse.json(result);
   } catch (e) {

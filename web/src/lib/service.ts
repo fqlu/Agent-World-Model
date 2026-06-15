@@ -6,6 +6,7 @@ import { buildAdoptionPlan } from "./adopt";
 import { Op, applyOps, journalAgentActivity, OpResult } from "./ops";
 import { parseWorkspaceYaml } from "./workspace";
 import { writeIndex } from "./index-gen";
+import { writeModel } from "./model-gen";
 
 export type PlanPayload = { ops: Op[]; notes: string[]; manual?: string[] };
 
@@ -76,11 +77,12 @@ export async function applyProposalSvc(
   const failed = results.some((r) => !r.skipped && !r.ok);
   q.finishProposal(proposalId, failed ? "applied_with_errors" : "applied", results);
 
-  // Regenerate the workspace index (SPEC §6.5) — best-effort derived artifact
+  // Regenerate derived artifacts (SPEC §6.5, §6.8) — best-effort
   try {
     await writeIndex(c, ws.name);
+    await writeModel(c);
   } catch {
-    // index generation must never fail an apply
+    // generation must never fail an apply
   }
   return results;
 }
@@ -90,6 +92,9 @@ export async function regenerateIndexSvc(wsId: number): Promise<boolean> {
   if (!ws) throw new Error(`Workspace ${wsId} not found`);
   const c = connectorFor(ws);
   const ok = await writeIndex(c, ws.name);
+  try {
+    await writeModel(c);
+  } catch {}
   if (ok) {
     try {
       const declRaw = await c.read("_Workspace.yaml");

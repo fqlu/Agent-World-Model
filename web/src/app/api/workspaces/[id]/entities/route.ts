@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { q } from "@/lib/db";
 import { connectorFor } from "@/lib/hub";
-import { listEntities, saveEntities, slugify, Entity, EntityKind } from "@/lib/entities";
+import { listEntities, saveEntities, slugify, Entity, EntityKind, Relation } from "@/lib/entities";
+import { relationshipPredicates } from "@/lib/spec";
 
 const KINDS: EntityKind[] = ["person", "system", "concept"];
 
@@ -30,6 +31,7 @@ export async function PUT(
   if (!body || !Array.isArray(body.entities)) {
     return NextResponse.json({ error: "Body must be { entities: [...] }" }, { status: 400 });
   }
+  const validPredicates = new Set(relationshipPredicates());
   const entities: Entity[] = [];
   const seen = new Set<string>();
   for (const raw of body.entities) {
@@ -46,6 +48,24 @@ export async function PUT(
         if (v != null && String(v).trim()) attributes[k] = String(v).trim();
       }
     }
+    const relations: Relation[] = [];
+    if (Array.isArray(raw.relations)) {
+      for (const r of raw.relations) {
+        if (
+          r &&
+          typeof r.predicate === "string" &&
+          validPredicates.has(r.predicate) &&
+          typeof r.target === "string" &&
+          r.target.trim()
+        ) {
+          relations.push({
+            predicate: r.predicate,
+            target: r.target.trim(),
+            note: typeof r.note === "string" && r.note.trim() ? r.note.trim() : undefined,
+          });
+        }
+      }
+    }
     entities.push({
       slug,
       name: raw.name.trim(),
@@ -54,6 +74,7 @@ export async function PUT(
       source: raw.source === "derived" ? "derived" : "asserted",
       confirmed: typeof raw.confirmed === "string" ? raw.confirmed : undefined,
       attributes,
+      relations,
       notes: typeof raw.notes === "string" ? raw.notes : "",
     });
   }
@@ -62,7 +83,9 @@ export async function PUT(
     const result = await saveEntities(c, entities);
     try {
       const { writeIndex } = await import("@/lib/index-gen");
+      const { writeModel } = await import("@/lib/model-gen");
       await writeIndex(c, ws.name);
+      await writeModel(c);
     } catch {}
     return NextResponse.json(result);
   } catch (e) {

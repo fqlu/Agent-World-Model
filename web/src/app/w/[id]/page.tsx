@@ -162,6 +162,12 @@ export default async function WorkspacePage({ params }: { params: Promise<{ id: 
           <Link href={`/w/${ws.id}/entities`} className="btn-primary mt-4 w-full justify-center">
             Manage entities
           </Link>
+          <Link
+            href={`/w/${ws.id}/model`}
+            className="mt-2 text-center text-xs text-indigo-600 hover:underline"
+          >
+            View world-model graph →
+          </Link>
         </div>
       </section>
 

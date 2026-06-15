@@ -6,6 +6,8 @@ import { journalAgentActivity } from "./ops";
 export type EntityKind = "person" | "system" | "concept";
 export type EntitySource = "derived" | "asserted";
 
+export type Relation = { predicate: string; target: string; note?: string };
+
 export type Entity = {
   slug: string;
   name: string;
@@ -14,6 +16,7 @@ export type Entity = {
   source: EntitySource;
   confirmed?: string;
   attributes: Record<string, string>;
+  relations: Relation[];
   notes: string;
 };
 
@@ -49,6 +52,19 @@ export function parseEntityFile(md: string): Entity | null {
       if (v != null) attrs[k] = String(v);
     }
   }
+  const relations: Relation[] = [];
+  if (Array.isArray(d.relations)) {
+    for (const r of d.relations) {
+      if (r && typeof r === "object" && typeof (r as Relation).predicate === "string" && typeof (r as Relation).target === "string") {
+        const rr = r as { predicate: string; target: string; note?: unknown };
+        relations.push({
+          predicate: rr.predicate,
+          target: rr.target,
+          note: typeof rr.note === "string" ? rr.note : undefined,
+        });
+      }
+    }
+  }
   return {
     slug: slugify(d.name),
     name: d.name,
@@ -57,6 +73,7 @@ export function parseEntityFile(md: string): Entity | null {
     source: d.source === "derived" ? "derived" : "asserted",
     confirmed: typeof d.confirmed === "string" ? d.confirmed : undefined,
     attributes: attrs,
+    relations,
     notes: m[2].trim(),
   };
 }
@@ -70,6 +87,11 @@ export function serializeEntity(e: Entity): string {
   };
   if (e.confirmed) front.confirmed = e.confirmed;
   front.attributes = e.attributes;
+  if (e.relations.length) {
+    front.relations = e.relations.map((r) =>
+      r.note ? { predicate: r.predicate, target: r.target, note: r.note } : { predicate: r.predicate, target: r.target },
+    );
+  }
   return `---\n${YAML.stringify(front).trimEnd()}\n---\n\n${e.notes.trim()}\n`;
 }
 

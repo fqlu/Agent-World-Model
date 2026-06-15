@@ -34,6 +34,11 @@ export type SpecManifest = {
     kinds: string[];
     required_frontmatter: string[];
   };
+  relationships?: {
+    stored_in: string;
+    predicates: string[];
+    target: string;
+  };
   rules: LintRuleDef[];
   profiles: Record<string, ProfileDef>;
 };
@@ -74,6 +79,10 @@ export function loadTemplate(name: string, profile?: string): string {
 
 export function listProfiles(): string[] {
   return Object.keys(loadManifest().profiles);
+}
+
+export function relationshipPredicates(): string[] {
+  return loadManifest().relationships?.predicates ?? [];
 }
 
 export function ruleDef(id: string): LintRuleDef {

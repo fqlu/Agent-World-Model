@@ -3,6 +3,8 @@ import { notFound } from "next/navigation";
 import { q } from "@/lib/db";
 import { connectorFor } from "@/lib/hub";
 import { listEntities } from "@/lib/entities";
+import { relationshipPredicates } from "@/lib/spec";
+import { promotedScopes } from "@/lib/model-gen";
 import EntitiesEditor from "./editor";
 
 export const dynamic = "force-dynamic";
@@ -11,7 +13,9 @@ export default async function EntitiesPage({ params }: { params: Promise<{ id: s
   const { id } = await params;
   const ws = q.getWorkspace(Number(id));
   if (!ws) notFound();
-  const { mount, entities, problems } = await listEntities(connectorFor(ws));
+  const c = connectorFor(ws);
+  const { mount, entities, problems } = await listEntities(c);
+  const scopes = await promotedScopes(c);
 
   return (
     <div className="space-y-4">
@@ -33,7 +37,12 @@ export default async function EntitiesPage({ params }: { params: Promise<{ id: s
           </p>
         )}
       </div>
-      <EntitiesEditor wsId={ws.id} initial={entities} />
+      <EntitiesEditor
+        wsId={ws.id}
+        initial={entities}
+        predicates={relationshipPredicates()}
+        scopes={scopes}
+      />
     </div>
   );
 }

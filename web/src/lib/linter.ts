@@ -175,12 +175,22 @@ export async function runAudit(c: Connector, profileName = "incubeta"): Promise<
     await checkContextDir(mounts.context, "");
   }
 
-  // ---- Entities (SPEC §6.6) ----
+  // ---- Entities (SPEC §6.6) + Relationships (SPEC §6.7) ----
   if (mounts.entities && rootNames.has(mounts.entities)) {
-    for (const e of await c.list(mounts.entities)) {
-      if (e.kind !== "file" || !e.name.endsWith(".md")) continue;
+    const predicates = new Set(manifest.relationships?.predicates ?? []);
+    const entityFiles = (await c.list(mounts.entities)).filter(
+      (e) => e.kind === "file" && e.name.endsWith(".md"),
+    );
+    const parsed = new Map<string, ReturnType<typeof parseEntityFile>>();
+    const slugs = new Set<string>();
+    for (const e of entityFiles) {
       const md = await c.read(e.path);
       const ent = md !== null ? parseEntityFile(md) : null;
+      parsed.set(e.path, ent);
+      if (ent) slugs.add(ent.slug);
+    }
+    for (const e of entityFiles) {
+      const ent = parsed.get(e.path);
       if (!ent) {
         add("EN-001", e.path, "Invalid entity file (needs frontmatter with name + kind person/system/concept)");
         continue;
@@ -188,6 +198,16 @@ export async function runAudit(c: Connector, profileName = "incubeta"): Promise<
       stats.entities = (stats.entities ?? 0) + 1;
       if (`${ent.slug}.md` !== e.name) {
         add("EN-002", e.path, `Entity slug "${ent.slug}" does not match filename`);
+      }
+      for (const r of ent.relations) {
+        if (!predicates.has(r.predicate)) {
+          add("RL-001", e.path, `Relationship predicate "${r.predicate}" not in vocabulary`);
+        }
+        const resolvesEntity = slugs.has(r.target);
+        const resolvesScope = !resolvesEntity && (await c.exists(r.target));
+        if (!resolvesEntity && !resolvesScope) {
+          add("RL-002", e.path, `Relationship target "${r.target}" resolves to neither an entity nor a scope`);
+        }
       }
     }
   }

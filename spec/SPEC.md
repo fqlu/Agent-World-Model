@@ -1,6 +1,6 @@
 # Drive Context Protocol — Specification
 
-**Version:** 0.7.0 (draft)
+**Version:** 0.8.0 (draft)
 **Status:** 🟠 Draft — under review by James Lu
 **Reference implementation:** Incubeta Master Folder (jamesfqlu@gmail.com Drive)
 
@@ -50,7 +50,7 @@ declares where those primitives are mounted in a root topology manifest,
 `_Workspace.yaml`:
 
 ```yaml
-spec_version: 0.7.0
+spec_version: 0.8.0
 profile: incubeta
 mounts:
   areas: [Clients, Internal]   # scope-bearing folders (≥1, any names)
@@ -338,9 +338,56 @@ Free-text notes. Both humans and agents read this to understand the entity.
 - Entities are cross-cutting and so live at the workspace root, not per-scope.
 - The entities capability is OPTIONAL; when its mount is declared it must
   exist (`[ST-002]`) and its files must be valid (`[EN-001]`).
-- Entities are the **cast** of the world model. Typed relationships between
-  entities and scopes (the "edges") are a later capability; v0.7 establishes
-  the nodes and surfaces them in `_Index.md`.
+- Entities are the **cast** of the world model. Typed relationships (§6.7) are
+  the edges between them.
+
+### 6.7 Relationships (the "edges" of the world model)
+
+Entities are nouns; **relationships** are the typed verbs between them — the
+edges that turn a list of things into a model an agent can traverse. "Who
+leads Hanes? What does Bonds run on? Which deployments depend on this system?"
+are relationship queries.
+
+- A relationship is stored as an **outgoing edge in the subject entity's
+  frontmatter**, so reading one entity reveals its connections:
+
+```markdown
+# _Entities/james-lu.md
+---
+name: James Lu
+kind: person
+relations:
+  - predicate: leads
+    target: hanesbrands-hanes        # an entity slug
+    note: lead since 2024
+  - predicate: works-on
+    target: "Clients/Hanesbrands (Hanes)/Hanes | Offline CAPI"   # a scope path
+---
+```
+
+- `predicate` MUST be drawn from the workspace's **closed vocabulary**
+  (manifest `relationships.predicates`; default: `leads`, `owns`, `works-on`,
+  `member-of`, `reports-to`, `uses`, `deployed-for`, `depends-on`,
+  `related-to`). A closed set keeps the graph queryable and dodges the
+  open-ontology maintenance trap. `[RL-001]`
+- `target` resolves to an **entity slug** if one matches, otherwise to a
+  **scope path** (workspace-relative). A target that resolves to neither is a
+  dangling edge — flagged, not fatal. `[RL-002]`
+- `note` is optional free text. Edges carry the subject entity's provenance.
+- The full graph (including inverse traversal — "who leads X?") is assembled
+  by tooling into the projection (§6.8); humans don't maintain back-links.
+
+### 6.8 `_Model.json` (workspace root, generated) — the world-model projection
+
+The structured, queryable snapshot of the whole world model: every node
+(entity or scope) and every edge (typed relationship, plus context-group
+membership), compiled from the markdown into one JSON document.
+
+- It is the machine-readable twin of `_Index.md`: an agent loads `_Model.json`
+  to get the entire model at once and traverse it, rather than walking files.
+- Derived artifact — regenerated whenever entities, relationships, or context
+  groups change; never hand-edited; the files remain canonical.
+- Exempt from ST-004 (it does not need declaring in `_Workspace.yaml`).
 
 ## 7. Memory
 
@@ -415,6 +462,8 @@ Severities: **error** (violates a MUST), **warn** (violates a SHOULD),
 | CX-002 | warn | Context group member paths exist under the declaring folder |
 | EN-001 | error | Entity files have valid `name` and `kind` (person/system/concept) |
 | EN-002 | warn | Entity slug (name) matches filename |
+| RL-001 | error | Relationship `predicate` is in the workspace vocabulary |
+| RL-002 | warn | Relationship `target` resolves to an entity or existing scope |
 
 Removed in v0.6 (content-by-default pivot): SC-002 (per-type subfolders),
 SC-003 (asset registration), SC-004 (unclassifiable folders), OV-001

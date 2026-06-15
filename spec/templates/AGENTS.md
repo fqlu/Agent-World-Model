@@ -47,6 +47,14 @@ When a name or system recurs (a colleague, a GTM container, a topic), the
 entity file is its canonical record — resolve references there rather than
 re-deriving from prose. Each carries provenance (`source`, `confirmed`).
 
+**Relationships** are typed edges in an entity's `relations:` frontmatter
+(`predicate`, `target`, `note`) — the verbs of the world model (leads, owns,
+uses, deployed-for, depends-on…). To answer "who/what relates to X", read
+the entities, or load the compiled **`_Model.json`** at the root: it is the
+whole world model as nodes + edges in one queryable document — the fastest
+way to traverse relationships without walking every file. `_Model.json` is
+generated; the entity files are canonical.
+
 ## Operating rules
 
 1. **Read before write.** Entering a scope: `_Overview.md` → `_Tasks.md` (if
