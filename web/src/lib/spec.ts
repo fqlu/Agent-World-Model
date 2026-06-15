@@ -28,6 +28,12 @@ export type SpecManifest = {
     wip_notes: { suffix: string; file_pattern: string; required_sections: string[] };
     journal: { path_pattern: string; agent_activity_heading: string };
   };
+  entities?: {
+    default_mount: string;
+    template: string;
+    kinds: string[];
+    required_frontmatter: string[];
+  };
   rules: LintRuleDef[];
   profiles: Record<string, ProfileDef>;
 };

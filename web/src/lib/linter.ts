@@ -1,6 +1,7 @@
 import { Connector, Entry } from "./connector";
 import { loadManifest, ruleDef } from "./spec";
 import { parseGroupFile, DEFAULT_CONTEXT_DIR } from "./context";
+import { parseEntityFile } from "./entities";
 import {
   parseWorkspaceYaml,
   WorkspaceDecl,
@@ -25,6 +26,7 @@ export type AuditStats = {
   wipNotes: number;
   journalDays: number;
   groups?: number;
+  entities?: number;
 };
 
 export type AuditResult = {
@@ -83,6 +85,7 @@ export async function runAudit(c: Connector, profileName = "incubeta"): Promise<
     templates: decl.mounts.templates ?? "",
     archive: decl.mounts.archive ?? "",
     context: decl.mounts.context ?? "",
+    entities: decl.mounts.entities ?? "",
   };
 
   // ST-003 — capabilities mounted, >=1 area
@@ -102,6 +105,7 @@ export async function runAudit(c: Connector, profileName = "incubeta"): Promise<
     mounts.templates,
     mounts.archive,
     mounts.context,
+    mounts.entities,
   ].filter(Boolean);
   for (const p of declaredPaths) {
     if (!rootNames.has(p)) add("ST-002", p, `Declared mount "${p}" does not exist`);
@@ -169,6 +173,23 @@ export async function runAudit(c: Connector, profileName = "incubeta"): Promise<
   // ---- Root-level context groups (SPEC §6.4) ----
   if (mounts.context && rootNames.has(mounts.context)) {
     await checkContextDir(mounts.context, "");
+  }
+
+  // ---- Entities (SPEC §6.6) ----
+  if (mounts.entities && rootNames.has(mounts.entities)) {
+    for (const e of await c.list(mounts.entities)) {
+      if (e.kind !== "file" || !e.name.endsWith(".md")) continue;
+      const md = await c.read(e.path);
+      const ent = md !== null ? parseEntityFile(md) : null;
+      if (!ent) {
+        add("EN-001", e.path, "Invalid entity file (needs frontmatter with name + kind person/system/concept)");
+        continue;
+      }
+      stats.entities = (stats.entities ?? 0) + 1;
+      if (`${ent.slug}.md` !== e.name) {
+        add("EN-002", e.path, `Entity slug "${ent.slug}" does not match filename`);
+      }
+    }
   }
 
   return { findings, stats, decl };

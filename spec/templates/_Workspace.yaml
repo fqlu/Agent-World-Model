@@ -3,7 +3,7 @@
 # AGENTS.md's Map section is generated from it.
 # Example shown with the generic "core" profile — declare whichever profile
 # your organisation uses (e.g. "incubeta").
-spec_version: 0.6.0
+spec_version: 0.7.0
 profile: core
 
 owner:
@@ -22,3 +22,5 @@ mounts:
   # Optional: context groups — declares the root context directory AND the
   # directory name any folder can use for its own level's groups
   context: _Context
+  # Optional: entities — the "cast" (people, systems, concepts) as nodes
+  entities: _Entities

@@ -1,6 +1,6 @@
 # Drive Context Protocol — Specification
 
-**Version:** 0.6.0 (draft)
+**Version:** 0.7.0 (draft)
 **Status:** 🟠 Draft — under review by James Lu
 **Reference implementation:** Incubeta Master Folder (jamesfqlu@gmail.com Drive)
 
@@ -50,7 +50,7 @@ declares where those primitives are mounted in a root topology manifest,
 `_Workspace.yaml`:
 
 ```yaml
-spec_version: 0.6.0
+spec_version: 0.7.0
 profile: incubeta
 mounts:
   areas: [Clients, Internal]   # scope-bearing folders (≥1, any names)
@@ -298,6 +298,50 @@ is the `llms.txt` pattern applied to a Drive.
   canonical — the tree and the context dirs are the source of truth.
 - It is exempt from ST-004 (it does not need declaring in `_Workspace.yaml`).
 
+### 6.6 Entities (optional capability) — the "cast" of the world model
+
+Scopes answer "where does work live"; **entities** answer "who and what are
+the things the work is about." An entity is a first-class, addressable node
+for a person, system, or concept that recurs across scopes — a colleague, a
+GTM container, a cross-cutting topic. Entities turn facts that were buried in
+prose ("Sally Wilson — decision-maker", "GTM-WMW3QT") into nodes an agent can
+resolve consistently everywhere they appear.
+
+- Entities live in the **entities mount** (conventionally `_Entities/`), one
+  markdown file per entity, slug = filename:
+
+```markdown
+# _Entities/sally-wilson.md
+---
+name: Sally Wilson
+kind: person                       # person | system | concept
+aliases: [Sally]
+source: derived                    # derived (extracted) | asserted (human-confirmed)
+confirmed: 2026-06-10              # last time a human confirmed this is current
+attributes:
+  role: Senior decision-maker
+  org: Hanes
+  email: sally.wilson@hanes.com
+---
+
+Free-text notes. Both humans and agents read this to understand the entity.
+```
+
+- An entity file MUST have `name` and a `kind` of `person`, `system`, or
+  `concept`. `[EN-001]`
+- The slug (`name` field) SHOULD match the filename. `[EN-002]`
+- **Derived-first.** Tooling seeds entities by extracting them from existing
+  overviews (Key people, infrastructure lists); a human confirms and enriches.
+  `source` and `confirmed` record provenance so the model can show its own
+  freshness rather than hide staleness. Extraction proposes; it never
+  overwrites human-asserted entities.
+- Entities are cross-cutting and so live at the workspace root, not per-scope.
+- The entities capability is OPTIONAL; when its mount is declared it must
+  exist (`[ST-002]`) and its files must be valid (`[EN-001]`).
+- Entities are the **cast** of the world model. Typed relationships between
+  entities and scopes (the "edges") are a later capability; v0.7 establishes
+  the nodes and surfaces them in `_Index.md`.
+
 ## 7. Memory
 
 The workspace gives agents three memory surfaces, from coarse to fine:
@@ -369,6 +413,8 @@ Severities: **error** (violates a MUST), **warn** (violates a SHOULD),
 | AR-001 | error | `Archive/` mirrors original paths; nothing deleted |
 | CX-001 | error | Context group files have valid `name`, `title`, `members` |
 | CX-002 | warn | Context group member paths exist under the declaring folder |
+| EN-001 | error | Entity files have valid `name` and `kind` (person/system/concept) |
+| EN-002 | warn | Entity slug (name) matches filename |
 
 Removed in v0.6 (content-by-default pivot): SC-002 (per-type subfolders),
 SC-003 (asset registration), SC-004 (unclassifiable folders), OV-001

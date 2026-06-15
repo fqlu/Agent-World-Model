@@ -36,6 +36,11 @@ export default function RootLayout({
               Incubeta Hub
             </Link>
             <span className="text-sm text-zinc-500">Drive Context Protocol</span>
+            <nav className="ml-auto">
+              <Link href="/about" className="text-sm text-indigo-600 hover:underline">
+                What is this?
+              </Link>
+            </nav>
           </div>
         </header>
         <main className="mx-auto max-w-5xl px-6 py-8">{children}</main>

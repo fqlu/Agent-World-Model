@@ -38,8 +38,14 @@ its context is the nearest scope above it plus any context groups it belongs
 to. Never add context machinery to content folders uninvited. Scopes may
 also have a `_Tasks.md` (open commitments). Folders named `… | WIP Notes`
 hold dated meeting/work notes (`YYYY-MM-DD.md`). A generated `_Index.md` at
-the root maps every scope and context group — use it for orientation, but
-the tree and the context directories are the source of truth.
+the root maps every scope, entity, and context group — use it for
+orientation, but the tree and the source files are canonical.
+
+**Entities** (if an entities mount like `_Entities/` is declared) are the
+"cast": people, systems, and concepts as addressable nodes, one file each.
+When a name or system recurs (a colleague, a GTM container, a topic), the
+entity file is its canonical record — resolve references there rather than
+re-deriving from prose. Each carries provenance (`source`, `confirmed`).
 
 ## Operating rules
 

@@ -34,7 +34,7 @@ export default async function WorkspacePage({ params }: { params: Promise<{ id: 
         </p>
       </div>
 
-      <section className="grid gap-4 lg:grid-cols-3">
+      <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {/* 1 — Audit */}
         <div className="card flex flex-col p-5">
           <div className="flex items-center gap-2">
@@ -134,6 +134,33 @@ export default async function WorkspacePage({ params }: { params: Promise<{ id: 
           </div>
           <Link href={`/w/${ws.id}/context`} className="btn-primary mt-4 w-full justify-center">
             Open context canvas
+          </Link>
+        </div>
+
+        {/* 4 — Entities */}
+        <div className="card flex flex-col p-5">
+          <div className="flex items-center gap-2">
+            <span className="flex h-6 w-6 items-center justify-center rounded-full bg-indigo-600 text-xs font-bold text-white">
+              4
+            </span>
+            <h2 className="font-semibold text-zinc-900">Entities</h2>
+          </div>
+          <p className="mt-2 text-xs text-zinc-500">
+            The cast of the world model — people, systems, concepts as nodes agents resolve.
+            Seeded by extracting from your overviews.
+          </p>
+          <div className="mt-3 flex-1 text-sm">
+            {latest ? (
+              <p>
+                <span className="text-lg font-semibold text-zinc-900">{latest.entities ?? 0}</span>{" "}
+                <span className="text-xs text-zinc-500">entit{(latest.entities ?? 0) === 1 ? "y" : "ies"} as of last audit</span>
+              </p>
+            ) : (
+              <p className="text-zinc-400">Audit first to see entity counts.</p>
+            )}
+          </div>
+          <Link href={`/w/${ws.id}/entities`} className="btn-primary mt-4 w-full justify-center">
+            Manage entities
           </Link>
         </div>
       </section>

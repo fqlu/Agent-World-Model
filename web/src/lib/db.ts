@@ -1,14 +1,26 @@
-import Database from "better-sqlite3";
+import type DatabaseType from "better-sqlite3";
 import fs from "node:fs";
 import path from "node:path";
 
-const DATA_DIR = process.env.HUB_DATA_DIR ?? path.join(process.cwd(), "data");
-fs.mkdirSync(DATA_DIR, { recursive: true });
+// Lazy, singleton connection. Opening the database (and loading the native
+// better-sqlite3 binding) is deferred until the first query, so importing this
+// module during `next build` page-data collection never touches native code.
+let _db: DatabaseType.Database | null = null;
 
-const db = new Database(path.join(DATA_DIR, "hub.db"));
-db.pragma("journal_mode = WAL");
+function getDb(): DatabaseType.Database {
+  if (_db) return _db;
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const Database = require("better-sqlite3") as typeof import("better-sqlite3");
+  const DATA_DIR = process.env.HUB_DATA_DIR ?? path.join(process.cwd(), "data");
+  fs.mkdirSync(DATA_DIR, { recursive: true });
+  const db = new Database(path.join(DATA_DIR, "hub.db"));
+  db.pragma("journal_mode = WAL");
+  db.exec(SCHEMA);
+  _db = db;
+  return db;
+}
 
-db.exec(`
+const SCHEMA = `
 CREATE TABLE IF NOT EXISTS workspaces (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   name TEXT NOT NULL,
@@ -39,7 +51,7 @@ CREATE TABLE IF NOT EXISTS google_tokens (
   tokens TEXT NOT NULL,
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
-`);
+`;
 
 export type WorkspaceRow = {
   id: number;
@@ -71,9 +83,9 @@ export type ProposalRow = {
 
 export const q = {
   listWorkspaces: () =>
-    db.prepare("SELECT * FROM workspaces ORDER BY id").all() as WorkspaceRow[],
+    getDb().prepare("SELECT * FROM workspaces ORDER BY id").all() as WorkspaceRow[],
   getWorkspace: (id: number) =>
-    db.prepare("SELECT * FROM workspaces WHERE id = ?").get(id) as WorkspaceRow | undefined,
+    getDb().prepare("SELECT * FROM workspaces WHERE id = ?").get(id) as WorkspaceRow | undefined,
   createWorkspace: (w: {
     name: string;
     kind: string;
@@ -82,7 +94,7 @@ export const q = {
     profile?: string;
   }) =>
     Number(
-      db
+      getDb()
         .prepare(
           "INSERT INTO workspaces (name, kind, root, account_email, profile) VALUES (?,?,?,?,?)",
         )
@@ -92,48 +104,47 @@ export const q = {
 
   insertAudit: (workspaceId: number, findings: unknown, stats: unknown) =>
     Number(
-      db
+      getDb()
         .prepare("INSERT INTO audits (workspace_id, findings, stats) VALUES (?,?,?)")
         .run(workspaceId, JSON.stringify(findings), JSON.stringify(stats)).lastInsertRowid,
     ),
   getAudit: (id: number) =>
-    db.prepare("SELECT * FROM audits WHERE id = ?").get(id) as AuditRow | undefined,
+    getDb().prepare("SELECT * FROM audits WHERE id = ?").get(id) as AuditRow | undefined,
   listAudits: (workspaceId: number) =>
-    db
+    getDb()
       .prepare("SELECT * FROM audits WHERE workspace_id = ? ORDER BY id DESC")
       .all(workspaceId) as AuditRow[],
 
   insertProposal: (workspaceId: number, kind: string, plan: unknown) =>
     Number(
-      db
+      getDb()
         .prepare("INSERT INTO proposals (workspace_id, kind, plan) VALUES (?,?,?)")
         .run(workspaceId, kind, JSON.stringify(plan)).lastInsertRowid,
     ),
   getProposal: (id: number) =>
-    db.prepare("SELECT * FROM proposals WHERE id = ?").get(id) as ProposalRow | undefined,
+    getDb().prepare("SELECT * FROM proposals WHERE id = ?").get(id) as ProposalRow | undefined,
   listProposals: (workspaceId: number) =>
-    db
+    getDb()
       .prepare("SELECT * FROM proposals WHERE workspace_id = ? ORDER BY id DESC")
       .all(workspaceId) as ProposalRow[],
   finishProposal: (id: number, status: string, result: unknown) =>
-    db
+    getDb()
       .prepare("UPDATE proposals SET status = ?, result = ? WHERE id = ?")
       .run(status, JSON.stringify(result), id),
 
   saveTokens: (email: string, tokens: unknown) =>
-    db
+    getDb()
       .prepare(
         "INSERT INTO google_tokens (email, tokens) VALUES (?,?) ON CONFLICT(email) DO UPDATE SET tokens = excluded.tokens",
       )
       .run(email, JSON.stringify(tokens)),
   getTokens: (email: string) =>
-    db.prepare("SELECT tokens FROM google_tokens WHERE email = ?").get(email) as
+    getDb().prepare("SELECT tokens FROM google_tokens WHERE email = ?").get(email) as
       | { tokens: string }
       | undefined,
   listTokenEmails: () =>
-    (db.prepare("SELECT email FROM google_tokens ORDER BY email").all() as { email: string }[]).map(
+    (getDb().prepare("SELECT email FROM google_tokens ORDER BY email").all() as { email: string }[]).map(
       (r) => r.email,
     ),
 };
 
-export default db;

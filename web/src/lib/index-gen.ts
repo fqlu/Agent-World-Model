@@ -2,6 +2,7 @@ import { Connector } from "./connector";
 import { loadManifest } from "./spec";
 import { parseWorkspaceYaml, sectionLines } from "./workspace";
 import { parseGroupFile, ContextGroup, DEFAULT_CONTEXT_DIR } from "./context";
+import { listEntities, Entity } from "./entities";
 
 // _Index.md — the llms.txt pattern applied to a workspace (SPEC §6.5):
 // one generated, high-recall document mapping every scope and context group,
@@ -122,6 +123,37 @@ export async function buildIndexMd(c: Connector, workspaceName: string): Promise
       const indent = "  ".repeat(s.depth - 1);
       const desc = s.whatItIs ? ` — ${s.whatItIs}` : "";
       out.push(`${indent}- **[${s.name}](${enc(s.path)}/_Overview.md)**${desc}`);
+    }
+  }
+
+  // Entities (the cast)
+  let entities: Entity[] = [];
+  try {
+    entities = (await listEntities(c)).entities;
+  } catch {
+    /* entities optional */
+  }
+  if (entities.length) {
+    out.push("");
+    out.push("## Entities");
+    const byKind: Record<string, Entity[]> = { person: [], system: [], concept: [] };
+    for (const e of entities) (byKind[e.kind] ??= []).push(e);
+    const label: Record<string, string> = {
+      person: "People",
+      system: "Systems",
+      concept: "Concepts",
+    };
+    for (const kind of ["person", "system", "concept"]) {
+      const list = byKind[kind];
+      if (!list?.length) continue;
+      out.push("");
+      out.push(`### ${label[kind]}`);
+      for (const e of list) {
+        const attrs = Object.entries(e.attributes)
+          .map(([k, v]) => `${k}: ${v}`)
+          .join(", ");
+        out.push(`- **${e.name}**${attrs ? ` — ${attrs}` : ""}`);
+      }
     }
   }
 

@@ -1,6 +1,6 @@
 # Drive Context Protocol — machine-readable manifest
 # Mirrors SPEC.md §9. The linter consumes this file; SPEC.md is for humans.
-spec_version: 0.6.0
+spec_version: 0.7.0
 
 # Topology is declarative (SPEC §2): each workspace declares its own layout in
 # a root _Workspace.yaml; the linter validates against that declaration.
@@ -10,7 +10,7 @@ workspace:
   required_root_files: [_Workspace.yaml, AGENTS.md, _Overview.md]     # ST-001
   optional_root_files: [_Index.md]     # generated artifact (§6.5), exempt from ST-004
   required_capabilities: [journal, templates, archive]                # ST-003
-  optional_capabilities: [context]                                    # §6.4
+  optional_capabilities: [context, entities]                          # §6.4, §6.6
   areas_min: 1                                                        # ST-003
   protocol_synced_with_manifest: true                                 # ST-005
   # undeclared root items -> ST-004 (warn); profiles may whitelist files
@@ -52,6 +52,14 @@ context:
   inheritance: down              # effective context = own + all ancestors'
   placement: lowest_common_ancestor              # guidance, not lint-enforced
 
+entities:                        # §6.6 — the "cast" of the world model
+  default_mount: "_Entities"     # workspace-root registry, one file per entity
+  template: "Entity.md"
+  kinds: [person, system, concept]
+  required_frontmatter: [name, kind]             # EN-001
+  provenance: [source, confirmed]                # derived|asserted, last-confirmed date
+  derive_first: true             # extracted from overviews; human confirms/enriches
+
 naming:
   pipe_separator: " | "
   entity_no_pipes: true              # NM-003
@@ -92,6 +100,8 @@ rules:
   - { id: AR-001, severity: error, summary: archive mirrors paths, no deletes }
   - { id: CX-001, severity: error, summary: context group files valid (name/title/members) }
   - { id: CX-002, severity: warn,  summary: context group member paths exist under declaring folder }
+  - { id: EN-001, severity: error, summary: entity files valid (name + kind person/system/concept) }
+  - { id: EN-002, severity: warn,  summary: entity slug matches filename }
 
 # Profiles layer org-specific rituals and template overrides onto the core
 # protocol. Template overrides live in spec/templates/profiles/<profile>/ and
@@ -105,6 +115,7 @@ profiles:
       templates: Templates
       archive: Archive
       context: _Context
+      entities: _Entities
     root_file_allowance: []
   incubeta:
     default_topology:           # starter, not law — workspaces may declare otherwise
@@ -113,6 +124,7 @@ profiles:
       templates: Templates
       archive: Archive
       context: _Context
+      entities: _Entities
     draft_lifecycle:
       working_prefix: "Draft_"
       production_prefixes: ["[INT]", "[EXT]"]

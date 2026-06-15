@@ -18,6 +18,7 @@ that structure on a connected Google Drive.
 | M3 | Adoption flow — propose-then-apply migration of existing folders | 🟢 |
 | M3.5 | Context groups — collapsible-tree canvas, descendant members, downward inheritance (spec v0.4) | 🟢 |
 | M3.6 | Agent-readiness: AGENTS.md rulebook (auto-discovery standard) + generated `_Index.md` RAG map (spec v0.5) | 🟢 |
+| M3.7 | World model — first-class entities (people/systems/concepts), derived-first via extraction from overviews (spec v0.7) | 🟢 |
 | M4 | Cloud Run deployment, incubeta.com-restricted OAuth | ⬜ |
 | Later | GTM container audit module, contacts, shared team zones | ⬜ |
 
