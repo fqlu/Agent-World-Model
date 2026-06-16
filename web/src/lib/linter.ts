@@ -1,5 +1,6 @@
 import { Connector, Entry } from "./connector";
-import { loadManifest, ruleDef } from "./spec";
+import { loadManifest } from "./spec";
+import { resolveRuleConfig } from "./rules";
 import { parseGroupFile, DEFAULT_CONTEXT_DIR } from "./context";
 import { parseEntityFile } from "./entities";
 import {
@@ -51,11 +52,21 @@ export async function runAudit(c: Connector, profileName = "incubeta"): Promise<
     errors: 0, warns: 0, infos: 0, scopes: 0, overviews: 0, wipNotes: 0, journalDays: 0, groups: 0,
   };
 
+  // Parse the topology declaration first so per-workspace rule overrides
+  // (SPEC §9.1) apply to every finding, including the structural ones below.
+  let decl: WorkspaceDecl | null = null;
+  const wsRaw = await c.read(manifest.workspace.manifest_file);
+  if (wsRaw !== null) decl = parseWorkspaceYaml(wsRaw);
+  const cfg = resolveRuleConfig(decl);
+
+  // add() honors the workspace's effective severity — a rule set to "off" is
+  // silently skipped, and counts use the effective (possibly overridden) level.
   const add = (rule: string, path: string, message: string) => {
-    const def = ruleDef(rule);
-    findings.push({ rule, severity: def.severity, path, message });
-    if (def.severity === "error") stats.errors++;
-    else if (def.severity === "warn") stats.warns++;
+    const severity = cfg.severityOf(rule);
+    if (severity === "off") return;
+    findings.push({ rule, severity, path, message });
+    if (severity === "error") stats.errors++;
+    else if (severity === "warn") stats.warns++;
     else stats.infos++;
   };
 
@@ -66,13 +77,8 @@ export async function runAudit(c: Connector, profileName = "incubeta"): Promise<
   for (const f of manifest.workspace.required_root_files) {
     if (!rootNames.has(f)) add("ST-001", f, `Missing required root file ${f}`);
   }
-
-  // Parse the topology declaration
-  let decl: WorkspaceDecl | null = null;
-  const wsRaw = await c.read(manifest.workspace.manifest_file);
-  if (wsRaw !== null) {
-    decl = parseWorkspaceYaml(wsRaw);
-    if (!decl) add("ST-001", manifest.workspace.manifest_file, "Topology manifest is not valid YAML");
+  if (wsRaw !== null && !decl) {
+    add("ST-001", manifest.workspace.manifest_file, "Topology manifest is not valid YAML");
   }
 
   if (!decl?.mounts) {
@@ -177,7 +183,7 @@ export async function runAudit(c: Connector, profileName = "incubeta"): Promise<
 
   // ---- Entities (SPEC §6.6) + Relationships (SPEC §6.7) ----
   if (mounts.entities && rootNames.has(mounts.entities)) {
-    const predicates = new Set(manifest.relationships?.predicates ?? []);
+    const predicates = new Set(cfg.conventions.relationshipPredicates);
     const entityFiles = (await c.list(mounts.entities)).filter(
       (e) => e.kind === "file" && e.name.endsWith(".md"),
     );
@@ -305,7 +311,7 @@ export async function runAudit(c: Connector, profileName = "incubeta"): Promise<
       stats.wipNotes++;
       const md = await c.read(n.path);
       if (md !== null) {
-        const missing = manifest.collections.wip_notes.required_sections.filter(
+        const missing = cfg.conventions.wipRequiredSections.filter(
           (s) => !md.includes(`## ${s}`),
         );
         if (missing.length) {

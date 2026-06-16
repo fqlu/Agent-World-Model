@@ -9,11 +9,20 @@ export type Mounts = {
   entities?: string; // optional capability (SPEC §6.6)
 };
 
+export type RuleOverride = "off" | "error" | "warn" | "info";
+
 export type WorkspaceDecl = {
   spec_version?: string;
   profile?: string;
   owner?: { name?: string; email?: string };
   mounts?: Partial<Mounts> & { areas?: string[] };
+  rules?: {
+    overrides?: Record<string, RuleOverride>;
+    conventions?: {
+      relationship_predicates?: string[];
+      wip_required_sections?: string[];
+    };
+  };
 };
 
 export function parseWorkspaceYaml(content: string): WorkspaceDecl | null {

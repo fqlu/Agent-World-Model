@@ -1,6 +1,7 @@
 import YAML from "yaml";
 import { loadManifest, loadTemplate, ProfileDef } from "./spec";
-import { Mounts } from "./workspace";
+import { Mounts, WorkspaceDecl } from "./workspace";
+import { resolveRuleConfig, renderRulesSummary } from "./rules";
 import { Op } from "./ops";
 
 export type ScaffoldOptions = {
@@ -83,15 +84,24 @@ export function renderWorkspaceYaml(opts: ScaffoldOptions, mounts: Mounts): stri
   });
 }
 
-export function renderAgentsMd(opts: ScaffoldOptions, mounts: Mounts): string {
+export function renderAgentsMd(
+  opts: ScaffoldOptions,
+  mounts: Mounts,
+  decl?: WorkspaceDecl | null,
+): string {
   const manifest = loadManifest();
   const profile = manifest.profiles[opts.profile] ?? {};
+  const cfg = resolveRuleConfig(decl ?? null);
+  // Reflect the workspace's DECLARED spec version (regenerating AGENTS must not
+  // silently bump it ahead of _Workspace.yaml — that's the adopt flow's job).
+  const specVersion = decl?.spec_version ?? manifest.spec_version;
   return loadTemplate("AGENTS.md", opts.profile)
-    .replaceAll("{{spec_version}}", manifest.spec_version)
+    .replaceAll("{{spec_version}}", String(specVersion))
     .replaceAll("{{profile}}", opts.profile)
     .replaceAll("{{owner_name}}", opts.ownerName)
     .replaceAll("{{owner_email}}", opts.ownerEmail)
     .replaceAll("{{map}}", renderMap(mounts))
+    .replaceAll("{{rules_summary}}", renderRulesSummary(cfg))
     .replaceAll("{{profile_rules}}", renderProfileRules(opts.profile, profile));
 }
 

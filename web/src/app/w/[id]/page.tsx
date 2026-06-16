@@ -74,6 +74,12 @@ export default async function WorkspacePage({ params }: { params: Promise<{ id: 
           <form action={runAudit} className="mt-4">
             <button className="btn-primary w-full justify-center">Run audit</button>
           </form>
+          <Link
+            href={`/w/${ws.id}/rules`}
+            className="mt-2 block text-center text-xs text-indigo-600 hover:underline"
+          >
+            See &amp; edit enforced rules →
+          </Link>
         </div>
 
         {/* 2 — Repair */}

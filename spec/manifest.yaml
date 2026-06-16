@@ -1,6 +1,6 @@
 # Drive Context Protocol — machine-readable manifest
 # Mirrors SPEC.md §9. The linter consumes this file; SPEC.md is for humans.
-spec_version: 0.9.0
+spec_version: 0.10.0
 
 # Topology is declarative (SPEC §2): each workspace declares its own layout in
 # a root _Workspace.yaml; the linter validates against that declaration.

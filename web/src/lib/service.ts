@@ -156,6 +156,86 @@ export async function applySyncSvc(wsId: number): Promise<{
   };
 }
 
+export async function getRulesSvc(wsId: number) {
+  const ws = q.getWorkspace(wsId);
+  if (!ws) throw new Error(`Workspace ${wsId} not found`);
+  const c = connectorFor(ws);
+  const raw = await c.read("_Workspace.yaml");
+  const decl = raw ? parseWorkspaceYaml(raw) : null;
+  const { resolveRuleConfig } = await import("./rules");
+  const cfg = resolveRuleConfig(decl);
+  return {
+    rules: cfg.rules,
+    conventions: cfg.conventions,
+    profile: ws.profile,
+  };
+}
+
+// Persist rule overrides + tunable conventions into _Workspace.yaml, then
+// regenerate AGENTS.md so the rulebook matches. Only non-default overrides are
+// written, keeping the file clean.
+export async function saveRulesSvc(
+  wsId: number,
+  overrides: Record<string, string>,
+  conventions: { relationship_predicates?: string[]; wip_required_sections?: string[] },
+): Promise<{ ok: true }> {
+  const ws = q.getWorkspace(wsId);
+  if (!ws) throw new Error(`Workspace ${wsId} not found`);
+  const c = connectorFor(ws);
+  const YAML = (await import("yaml")).default;
+  const raw = await c.read("_Workspace.yaml");
+  if (!raw) throw new Error("Workspace has no _Workspace.yaml");
+  const doc = YAML.parse(raw) as Record<string, unknown>;
+
+  const cleanOverrides: Record<string, string> = {};
+  for (const [id, sev] of Object.entries(overrides)) {
+    if (["off", "error", "warn", "info"].includes(sev)) cleanOverrides[id] = sev;
+  }
+  const rulesBlock: Record<string, unknown> = {};
+  if (Object.keys(cleanOverrides).length) rulesBlock.overrides = cleanOverrides;
+  const conv: Record<string, unknown> = {};
+  if (conventions.relationship_predicates?.length)
+    conv.relationship_predicates = conventions.relationship_predicates;
+  if (conventions.wip_required_sections?.length)
+    conv.wip_required_sections = conventions.wip_required_sections;
+  if (Object.keys(conv).length) rulesBlock.conventions = conv;
+
+  if (Object.keys(rulesBlock).length) doc.rules = rulesBlock;
+  else delete doc.rules;
+
+  await c.write("_Workspace.yaml", YAML.stringify(doc), { overwrite: true });
+
+  // Regenerate AGENTS.md from the new effective config
+  try {
+    const newDecl = parseWorkspaceYaml(YAML.stringify(doc));
+    const mounts = {
+      areas: newDecl?.mounts?.areas ?? [],
+      journal: newDecl?.mounts?.journal ?? "Journal",
+      templates: newDecl?.mounts?.templates ?? "Templates",
+      archive: newDecl?.mounts?.archive ?? "Archive",
+      context: newDecl?.mounts?.context,
+      entities: newDecl?.mounts?.entities,
+    };
+    const { renderAgentsMd } = await import("./scaffold");
+    const agents = renderAgentsMd(
+      {
+        workspaceName: ws.name,
+        ownerName: process.env.HUB_OWNER_NAME ?? ws.name,
+        ownerEmail: process.env.HUB_OWNER_EMAIL ?? ws.account_email ?? "owner@unknown",
+        profile: ws.profile,
+      },
+      mounts,
+      newDecl,
+    );
+    await c.write("AGENTS.md", agents, { overwrite: true });
+    const journal = newDecl?.mounts?.journal ?? "Journal";
+    await journalAgentActivity(c, journal, `rule config updated; AGENTS.md regenerated`);
+  } catch {
+    /* AGENTS regen / journal best-effort */
+  }
+  return { ok: true };
+}
+
 export async function regenerateIndexSvc(wsId: number): Promise<boolean> {
   const ws = q.getWorkspace(wsId);
   if (!ws) throw new Error(`Workspace ${wsId} not found`);

@@ -84,6 +84,13 @@ generated; the entity files are canonical.
 9. **Ask when ambiguous.** A wrong-but-confident filing costs more than a
    question.
 
+## Enforced rules (this workspace)
+
+> Generated from the effective rule config (core spec + profile + this
+> workspace's overrides). These are exactly what the audit checks.
+
+{{rules_summary}}
+
 ## Profile rules ({{profile}})
 
 {{profile_rules}}

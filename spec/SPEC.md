@@ -1,6 +1,6 @@
 # Drive Context Protocol — Specification
 
-**Version:** 0.9.0 (draft)
+**Version:** 0.10.0 (draft)
 **Status:** 🟠 Draft — under review by James Lu
 **Reference implementation:** a personal knowledge-work Drive (`incubeta` profile)
 
@@ -50,7 +50,7 @@ declares where those primitives are mounted in a root topology manifest,
 `_Workspace.yaml`:
 
 ```yaml
-spec_version: 0.9.0
+spec_version: 0.10.0
 profile: incubeta
 mounts:
   areas: [Clients, Internal]   # scope-bearing folders (≥1, any names)
@@ -491,6 +491,34 @@ Removed in v0.6 (content-by-default pivot): SC-002 (per-type subfolders),
 SC-003 (asset registration), SC-004 (unclassifiable folders), OV-001
 (required overview sections), OV-002 (recent-activity cap). Content folders
 are not lint subjects; overview content is free-form.
+
+### 9.1 Per-workspace rule configuration
+
+The table above is the **default** ruleset (from the core spec + active
+profile). A workspace MAY tune it for its own needs by declaring a `rules:`
+block in `_Workspace.yaml`:
+
+```yaml
+rules:
+  overrides:                 # by rule id — change severity or disable
+    NM-002: off              # this workspace doesn't enforce ISO dates
+    JR-002: warn             # promote journal-index hygiene from info to warn
+  conventions:               # tune the parameterised checks
+    relationship_predicates: [leads, owns, uses, depends-on]   # narrower vocab
+    wip_required_sections: [Discussion, Decisions, Actions]
+```
+
+- An override sets a rule's severity to `error`/`warn`/`info`, or `off` to
+  disable it for this workspace. Unlisted rules keep their default severity.
+- `conventions` tune the data-driven checks (the relationship vocabulary that
+  RL-001 enforces; the WIP-note sections CL-002 looks for).
+- The audit reads this block, so tuning takes effect immediately. The
+  generated `AGENTS.md` includes an **Enforced rules** section rendered from
+  the effective config, so agents and the linter always agree.
+- Rules are configuration, not invention: a workspace can relax or re-weight
+  the protocol's checks, but the rule *definitions* live in the spec — keeping
+  workspaces interoperable. (Authoring entirely new custom checks is future
+  work.)
 
 ---
 
