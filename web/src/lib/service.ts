@@ -167,6 +167,7 @@ export async function getRulesSvc(wsId: number) {
   return {
     rules: cfg.rules,
     conventions: cfg.conventions,
+    houseRules: decl?.house_rules ?? [],
     profile: ws.profile,
   };
 }
@@ -178,6 +179,7 @@ export async function saveRulesSvc(
   wsId: number,
   overrides: Record<string, string>,
   conventions: { relationship_predicates?: string[]; wip_required_sections?: string[] },
+  houseRules?: import("./workspace").HouseRule[],
 ): Promise<{ ok: true }> {
   const ws = q.getWorkspace(wsId);
   if (!ws) throw new Error(`Workspace ${wsId} not found`);
@@ -202,6 +204,24 @@ export async function saveRulesSvc(
 
   if (Object.keys(rulesBlock).length) doc.rules = rulesBlock;
   else delete doc.rules;
+
+  // House rules (§9.2): keep only ones with non-empty text
+  if (houseRules) {
+    const clean = houseRules
+      .filter((h) => h && typeof h.text === "string" && h.text.trim())
+      .map((h) => {
+        const out: Record<string, unknown> = { text: h.text.trim() };
+        if (h.severity && ["off", "error", "warn", "info"].includes(h.severity)) out.severity = h.severity;
+        if (h.check?.type === "filename_prefix" && Array.isArray(h.check.allowed) && h.check.allowed.length) {
+          out.check = { type: "filename_prefix", allowed: h.check.allowed, ...(h.check.applies_to ? { applies_to: h.check.applies_to } : {}) };
+        } else if (h.check?.type === "forbidden_substring" && Array.isArray(h.check.values) && h.check.values.length) {
+          out.check = { type: "forbidden_substring", values: h.check.values, ...(h.check.applies_to ? { applies_to: h.check.applies_to } : {}) };
+        }
+        return out;
+      });
+    if (clean.length) doc.house_rules = clean;
+    else delete doc.house_rules;
+  }
 
   await c.write("_Workspace.yaml", YAML.stringify(doc), { overwrite: true });
 

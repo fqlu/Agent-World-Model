@@ -3,7 +3,7 @@
 # AGENTS.md's Map section is generated from it.
 # Example shown with the generic "core" profile — declare whichever profile
 # your organisation uses (e.g. "incubeta").
-spec_version: 0.10.0
+spec_version: 0.11.0
 profile: core
 
 owner:

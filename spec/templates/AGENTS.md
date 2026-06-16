@@ -84,6 +84,12 @@ generated; the entity files are canonical.
 9. **Ask when ambiguous.** A wrong-but-confident filing costs more than a
    question.
 
+## House rules
+
+> Workspace-specific rules to follow when creating, naming, and editing files.
+
+{{house_rules}}
+
 ## Enforced rules (this workspace)
 
 > Generated from the effective rule config (core spec + profile + this

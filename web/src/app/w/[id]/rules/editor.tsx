@@ -18,6 +18,14 @@ type Conventions = {
   pipeSeparator: string;
   entityKinds: string[];
 };
+type CheckType = "none" | "filename_prefix" | "forbidden_substring";
+type HouseRule = {
+  text: string;
+  severity?: EffSeverity;
+  check?:
+    | { type: "filename_prefix"; allowed: string[]; applies_to?: string }
+    | { type: "forbidden_substring"; values: string[]; applies_to?: string };
+};
 
 const SEV_BADGE: Record<EffSeverity, string> = {
   error: "bg-red-100 text-red-700",
@@ -30,18 +38,37 @@ export default function RulesEditor({
   wsId,
   rules,
   conventions,
+  houseRules: initialHouseRules,
 }: {
   wsId: number;
   rules: RuleView[];
   conventions: Conventions;
+  houseRules: HouseRule[];
 }) {
   const [sev, setSev] = useState<Record<string, EffSeverity>>(
     Object.fromEntries(rules.map((r) => [r.id, r.severity])),
   );
   const [predicates, setPredicates] = useState(conventions.relationshipPredicates.join(", "));
   const [wipSections, setWipSections] = useState(conventions.wipRequiredSections.join(", "));
+  const [houseRules, setHouseRules] = useState<HouseRule[]>(initialHouseRules);
   const [status, setStatus] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+
+  const checkTypeOf = (h: HouseRule): CheckType => h.check?.type ?? "none";
+  const setHR = (i: number, patch: Partial<HouseRule>) =>
+    setHouseRules((hs) => hs.map((h, j) => (j === i ? { ...h, ...patch } : h)));
+  const addHR = () =>
+    setHouseRules((hs) => [...hs, { text: "", severity: "warn" }]);
+  const removeHR = (i: number) => setHouseRules((hs) => hs.filter((_, j) => j !== i));
+  const setCheckType = (i: number, t: CheckType) =>
+    setHR(i, {
+      check:
+        t === "none"
+          ? undefined
+          : t === "filename_prefix"
+            ? { type: "filename_prefix", allowed: [], applies_to: "" }
+            : { type: "forbidden_substring", values: [], applies_to: "" },
+    });
 
   const defaults = useMemo(
     () => Object.fromEntries(rules.map((r) => [r.id, r.defaultSeverity])),
@@ -80,6 +107,18 @@ export default function RulesEditor({
             relationship_predicates: parseList(predicates),
             wip_required_sections: parseList(wipSections),
           },
+          houseRules: houseRules
+            .filter((h) => h.text.trim())
+            .map((h) => ({
+              text: h.text.trim(),
+              severity: h.severity ?? "warn",
+              check:
+                h.check?.type === "filename_prefix"
+                  ? { type: "filename_prefix", allowed: parseList((h.check.allowed ?? []).join(",")), applies_to: h.check.applies_to ?? "" }
+                  : h.check?.type === "forbidden_substring"
+                    ? { type: "forbidden_substring", values: parseList((h.check.values ?? []).join(",")), applies_to: h.check.applies_to ?? "" }
+                    : undefined,
+            })),
         }),
       });
       const body = await res.json();
@@ -90,7 +129,7 @@ export default function RulesEditor({
     } finally {
       setSaving(false);
     }
-  }, [wsId, rules, sev, defaults, predicates, wipSections]);
+  }, [wsId, rules, sev, defaults, predicates, wipSections, houseRules]);
 
   return (
     <div className="space-y-5">
@@ -141,6 +180,104 @@ export default function RulesEditor({
           </ul>
         </section>
       ))}
+
+      <section>
+        <div className="flex items-center justify-between">
+          <h2 className="text-sm font-semibold text-zinc-900">House rules</h2>
+          <button onClick={addHR} className="btn-secondary px-3 py-1 text-xs">
+            + Add house rule
+          </button>
+        </div>
+        <p className="mt-1 text-xs text-zinc-500">
+          Write a rule in plain language — it goes into <code className="font-mono">AGENTS.md</code>{" "}
+          so agents follow it. Optionally attach a check so the audit also flags violations.
+        </p>
+        {houseRules.length === 0 ? (
+          <p className="mt-2 text-sm text-zinc-400">None yet.</p>
+        ) : (
+          <ul className="mt-2 space-y-2">
+            {houseRules.map((h, i) => {
+              const ct = checkTypeOf(h);
+              return (
+                <li key={i} className="card space-y-2 p-3">
+                  <div className="flex items-start gap-2">
+                    <textarea
+                      value={h.text}
+                      onChange={(e) => setHR(i, { text: e.target.value })}
+                      rows={2}
+                      placeholder="e.g. Files use [DRAFT] until finalized, then [INT] internal / [EXT] external."
+                      className="input flex-1 text-sm"
+                    />
+                    <button
+                      onClick={() => removeHR(i)}
+                      className="text-xs text-red-600 hover:underline"
+                    >
+                      Remove
+                    </button>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2 text-xs">
+                    <span className="text-zinc-500">Audit check:</span>
+                    <select
+                      value={ct}
+                      onChange={(e) => setCheckType(i, e.target.value as CheckType)}
+                      className="rounded border border-zinc-300 bg-white px-1.5 py-1"
+                    >
+                      <option value="none">none (agent-followed only)</option>
+                      <option value="filename_prefix">filename prefix</option>
+                      <option value="forbidden_substring">forbidden substring</option>
+                    </select>
+                    {ct !== "none" && (
+                      <>
+                        <select
+                          value={h.severity ?? "warn"}
+                          onChange={(e) => setHR(i, { severity: e.target.value as EffSeverity })}
+                          className="rounded border border-zinc-300 bg-white px-1.5 py-1"
+                        >
+                          <option value="error">error</option>
+                          <option value="warn">warn</option>
+                          <option value="info">info</option>
+                        </select>
+                        <input
+                          value={h.check?.applies_to ?? ""}
+                          onChange={(e) =>
+                            setHR(i, { check: { ...h.check!, applies_to: e.target.value } })
+                          }
+                          placeholder="applies to (folder path; blank = whole workspace)"
+                          className="flex-1 rounded border border-zinc-300 bg-white px-1.5 py-1 font-mono"
+                        />
+                      </>
+                    )}
+                  </div>
+                  {ct === "filename_prefix" && (
+                    <input
+                      value={(h.check as { allowed: string[] }).allowed.join(", ")}
+                      onChange={(e) =>
+                        setHR(i, {
+                          check: { type: "filename_prefix", allowed: e.target.value.split(",").map((x) => x.trim()).filter(Boolean), applies_to: h.check?.applies_to ?? "" },
+                        })
+                      }
+                      placeholder="allowed prefixes, comma-separated  e.g.  [DRAFT], [INT], [EXT]"
+                      className="input font-mono text-xs"
+                    />
+                  )}
+                  {ct === "forbidden_substring" && (
+                    <input
+                      value={(h.check as { values: string[] }).values.join(", ")}
+                      onChange={(e) =>
+                        setHR(i, {
+                          check: { type: "forbidden_substring", values: e.target.value.split(",").map((x) => x.trim()).filter(Boolean), applies_to: h.check?.applies_to ?? "" },
+                        })
+                      }
+                      placeholder="forbidden substrings, comma-separated  e.g.  final_final, copy"
+                      className="input font-mono text-xs"
+                    />
+                  )}
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </section>
 
       <section>
         <h2 className="text-sm font-semibold text-zinc-900">Tunable conventions</h2>

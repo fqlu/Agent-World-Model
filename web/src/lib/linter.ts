@@ -181,6 +181,60 @@ export async function runAudit(c: Connector, profileName = "incubeta"): Promise<
     await checkContextDir(mounts.context, "");
   }
 
+  // ---- House rules (SPEC §9.2) — workspace-authored checks ----
+  const houseRules = decl.house_rules ?? [];
+  const exemptName = (name: string) =>
+    name.startsWith("_") || name.startsWith(".") || name === "AGENTS.md";
+  const addHouse = (id: string, severity: string, path: string, message: string) => {
+    if (severity === "off") return;
+    findings.push({ rule: id, severity: severity as Finding["severity"], path, message });
+    if (severity === "error") stats.errors++;
+    else if (severity === "warn") stats.warns++;
+    else stats.infos++;
+  };
+  for (let i = 0; i < houseRules.length; i++) {
+    const hr = houseRules[i];
+    if (!hr.check) continue; // text-only rule — agent-followed, not audited
+    const id = `HR-${i + 1}`;
+    const sev = hr.check && hr.severity ? hr.severity : "warn";
+    const base = hr.check.applies_to?.trim() || "";
+    if (base && !(await c.exists(base))) {
+      addHouse(id, sev, base, `House rule "${hr.text}": applies_to path "${base}" not found`);
+      continue;
+    }
+    const files: string[] = [];
+    const folders: string[] = [];
+    const collect = async (path: string) => {
+      for (const e of await c.list(path)) {
+        if (e.kind === "folder") {
+          folders.push(e.path);
+          await collect(e.path);
+        } else if (!exemptName(e.name)) {
+          files.push(e.path);
+        }
+      }
+    };
+    await collect(base);
+    if (hr.check.type === "filename_prefix") {
+      const allowed = hr.check.allowed ?? [];
+      for (const f of files) {
+        const name = f.split("/").pop()!;
+        if (!allowed.some((p) => name.startsWith(p))) {
+          addHouse(id, sev, f, `House rule "${hr.text}": "${name}" lacks an allowed prefix (${allowed.join(", ")})`);
+        }
+      }
+    } else if (hr.check.type === "forbidden_substring") {
+      const values = hr.check.values ?? [];
+      for (const p of [...files, ...folders]) {
+        const name = p.split("/").pop()!;
+        const hit = values.find((v) => name.toLowerCase().includes(v.toLowerCase()));
+        if (hit) {
+          addHouse(id, sev, p, `House rule "${hr.text}": "${name}" contains forbidden substring "${hit}"`);
+        }
+      }
+    }
+  }
+
   // ---- Entities (SPEC §6.6) + Relationships (SPEC §6.7) ----
   if (mounts.entities && rootNames.has(mounts.entities)) {
     const predicates = new Set(cfg.conventions.relationshipPredicates);

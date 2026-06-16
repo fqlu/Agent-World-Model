@@ -102,7 +102,21 @@ export function renderAgentsMd(
     .replaceAll("{{owner_email}}", opts.ownerEmail)
     .replaceAll("{{map}}", renderMap(mounts))
     .replaceAll("{{rules_summary}}", renderRulesSummary(cfg))
+    .replaceAll("{{house_rules}}", renderHouseRules(decl ?? null))
     .replaceAll("{{profile_rules}}", renderProfileRules(opts.profile, profile));
+}
+
+function renderHouseRules(decl: WorkspaceDecl | null): string {
+  const hr = decl?.house_rules ?? [];
+  if (!hr.length) return "*(none defined — add them on the Rules page.)*";
+  return hr
+    .map((r, i) => {
+      const check = r.check
+        ? ` _(also audited: ${r.check.type}${r.check.applies_to ? ` under ${r.check.applies_to}` : ""})_`
+        : "";
+      return `${i + 1}. ${r.text}${check}`;
+    })
+    .join("\n");
 }
 
 export function renderRootOverview(opts: ScaffoldOptions, mounts: Mounts): string {

@@ -25,6 +25,7 @@ export async function PUT(
       Number(id),
       body.overrides ?? {},
       body.conventions ?? {},
+      body.houseRules,
     );
     return NextResponse.json(result);
   } catch (e) {

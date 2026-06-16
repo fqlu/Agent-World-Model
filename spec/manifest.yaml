@@ -1,6 +1,6 @@
 # Drive Context Protocol — machine-readable manifest
 # Mirrors SPEC.md §9. The linter consumes this file; SPEC.md is for humans.
-spec_version: 0.10.0
+spec_version: 0.11.0
 
 # Topology is declarative (SPEC §2): each workspace declares its own layout in
 # a root _Workspace.yaml; the linter validates against that declaration.
@@ -59,6 +59,13 @@ entities:                        # §6.6 — the "cast" of the world model
   required_frontmatter: [name, kind]             # EN-001
   provenance: [source, confirmed]                # derived|asserted, last-confirmed date
   derive_first: true             # extracted from overviews; human confirms/enriches
+
+house_rules:                     # §9.2 — workspace-authored natural-language rules
+  stored_in: _Workspace.yaml     # house_rules: [{text, severity?, check?}]
+  text_always_in_agents_md: true # agents follow the text regardless of checks
+  default_severity: warn
+  check_types: [filename_prefix, forbidden_substring]
+  finding_ids: "HR-1, HR-2, …"
 
 relationships:                   # §6.7 — the "edges" of the world model
   stored_in: entity_frontmatter  # relations: [{predicate, target, note}]

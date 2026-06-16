@@ -1,6 +1,6 @@
 # Drive Context Protocol — Specification
 
-**Version:** 0.10.0 (draft)
+**Version:** 0.11.0 (draft)
 **Status:** 🟠 Draft — under review by James Lu
 **Reference implementation:** a personal knowledge-work Drive (`incubeta` profile)
 
@@ -50,7 +50,7 @@ declares where those primitives are mounted in a root topology manifest,
 `_Workspace.yaml`:
 
 ```yaml
-spec_version: 0.10.0
+spec_version: 0.11.0
 profile: incubeta
 mounts:
   areas: [Clients, Internal]   # scope-bearing folders (≥1, any names)
@@ -486,6 +486,7 @@ Severities: **error** (violates a MUST), **warn** (violates a SHOULD),
 | EN-002 | warn | Entity slug (name) matches filename |
 | RL-001 | error | Relationship `predicate` is in the workspace vocabulary |
 | RL-002 | warn | Relationship `target` resolves to an entity or existing scope |
+| HR-n | (per rule) | Workspace house-rule check failed (§9.2; default warn) |
 
 Removed in v0.6 (content-by-default pivot): SC-002 (per-type subfolders),
 SC-003 (asset registration), SC-004 (unclassifiable folders), OV-001
@@ -517,8 +518,43 @@ rules:
   the effective config, so agents and the linter always agree.
 - Rules are configuration, not invention: a workspace can relax or re-weight
   the protocol's checks, but the rule *definitions* live in the spec — keeping
-  workspaces interoperable. (Authoring entirely new custom checks is future
-  work.)
+  workspaces interoperable.
+
+### 9.2 House rules (workspace-authored, natural language)
+
+Beyond the built-in rules, a workspace authors its own in plain language under
+`house_rules:` in `_Workspace.yaml`:
+
+```yaml
+house_rules:
+  - text: "Files use [DRAFT] until finalized, then [INT] for internal,
+           [EXT] for files shared externally."
+    severity: warn
+    check:                       # optional — the mechanically-verifiable shadow
+      type: filename_prefix
+      applies_to: Clients        # path scope ('' = whole workspace)
+      allowed: ["[DRAFT]", "[INT]", "[EXT]"]
+  - text: "Don't leave 'final_final' or 'copy' in names."
+    check:
+      type: forbidden_substring
+      values: ["final_final", "copy"]
+```
+
+Two enforcement tiers, by design:
+
+- **Agent-followed (always).** Every rule's `text` is rendered into `AGENTS.md`,
+  so any agent operating in the workspace reads and follows it — including
+  judgment rules ("until I'm happy with it") that no deterministic check could
+  evaluate. This is the primary mechanism.
+- **Audit-verified (optional).** A rule MAY carry a declarative `check` that the
+  deterministic audit runs, reporting violations as `HR-1`, `HR-2`… at the
+  rule's `severity` (default warn). `[HR-001]` v0.11 checks: `filename_prefix`
+  (files under `applies_to` must start with an allowed prefix) and
+  `forbidden_substring` (names must not contain given substrings). Protocol
+  files (names starting with `_`, dotfiles, `AGENTS.md`) are exempt; scope
+  `applies_to` at a deliverables folder to avoid flagging notes.
+
+A rule with no `check` is agent-followed only — not mechanically audited.
 
 ---
 

@@ -11,6 +11,16 @@ export type Mounts = {
 
 export type RuleOverride = "off" | "error" | "warn" | "info";
 
+export type HouseRuleCheck =
+  | { type: "filename_prefix"; allowed: string[]; applies_to?: string }
+  | { type: "forbidden_substring"; values: string[]; applies_to?: string };
+
+export type HouseRule = {
+  text: string;
+  severity?: RuleOverride;
+  check?: HouseRuleCheck;
+};
+
 export type WorkspaceDecl = {
   spec_version?: string;
   profile?: string;
@@ -23,6 +33,7 @@ export type WorkspaceDecl = {
       wip_required_sections?: string[];
     };
   };
+  house_rules?: HouseRule[];
 };
 
 export function parseWorkspaceYaml(content: string): WorkspaceDecl | null {

@@ -27,7 +27,12 @@ export default async function RulesPage({ params }: { params: Promise<{ id: stri
           read the same rules. Profile: <span className="font-mono">{data.profile}</span>.
         </p>
       </div>
-      <RulesEditor wsId={ws.id} rules={data.rules} conventions={data.conventions} />
+      <RulesEditor
+        wsId={ws.id}
+        rules={data.rules}
+        conventions={data.conventions}
+        houseRules={data.houseRules}
+      />
     </div>
   );
 }
