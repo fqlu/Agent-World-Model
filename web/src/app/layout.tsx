@@ -36,7 +36,10 @@ export default function RootLayout({
               Agent World Model
             </Link>
             <span className="text-sm text-zinc-500">Drive Context Protocol</span>
-            <nav className="ml-auto">
+            <nav className="ml-auto flex items-center gap-4">
+              <Link href="/glossary" className="text-sm text-indigo-600 hover:underline">
+                Glossary
+              </Link>
               <Link href="/about" className="text-sm text-indigo-600 hover:underline">
                 What is this?
               </Link>

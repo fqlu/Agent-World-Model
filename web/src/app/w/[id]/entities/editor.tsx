@@ -65,11 +65,54 @@ export default function EntitiesEditor({
   const [newName, setNewName] = useState("");
   const [newKind, setNewKind] = useState<EntityKind>("person");
 
+  // ---- Filters ----
+  const [search, setSearch] = useState("");
+  const [fKind, setFKind] = useState<"all" | EntityKind>("all");
+  const [fOrg, setFOrg] = useState("all");
+  const [fClient, setFClient] = useState("all");
+  const [fProv, setFProv] = useState<"all" | "derived" | "asserted">("all");
+
+  const clientOf = useCallback((e: Entity): string[] => {
+    const set = new Set<string>();
+    for (const r of e.relations) {
+      const m = r.target.match(/^Clients\/([^/]+)/);
+      if (m) set.add(m[1]);
+    }
+    return [...set];
+  }, []);
+
+  const orgOptions = useMemo(
+    () => [...new Set(entities.map((e) => e.attributes.org).filter(Boolean))].sort(),
+    [entities],
+  );
+  const clientOptions = useMemo(
+    () => [...new Set(entities.flatMap(clientOf))].sort(),
+    [entities, clientOf],
+  );
+
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return entities.filter((e) => {
+      if (fKind !== "all" && e.kind !== fKind) return false;
+      if (fOrg !== "all" && e.attributes.org !== fOrg) return false;
+      if (fProv !== "all" && e.source !== fProv) return false;
+      if (fClient !== "all" && !clientOf(e).includes(fClient)) return false;
+      if (q) {
+        const hay = (e.name + " " + e.aliases.join(" ") + " " + attrLine(e.attributes) + " " + e.notes).toLowerCase();
+        if (!hay.includes(q)) return false;
+      }
+      return true;
+    });
+  }, [entities, search, fKind, fOrg, fClient, fProv, clientOf]);
+
+  const activeFilters = (fKind !== "all" ? 1 : 0) + (fOrg !== "all" ? 1 : 0) + (fClient !== "all" ? 1 : 0) + (fProv !== "all" ? 1 : 0) + (search ? 1 : 0);
+  const clearFilters = () => { setSearch(""); setFKind("all"); setFOrg("all"); setFClient("all"); setFProv("all"); };
+
   const grouped = useMemo(() => {
     const g: Record<EntityKind, Entity[]> = { person: [], system: [], concept: [] };
-    for (const e of entities) g[e.kind].push(e);
+    for (const e of filtered) g[e.kind].push(e);
     return g;
-  }, [entities]);
+  }, [filtered]);
 
   const extract = useCallback(async () => {
     setBusy("extract");
@@ -295,10 +338,53 @@ export default function EntitiesEditor({
         </div>
       )}
 
+      {/* Filter bar */}
+      {entities.length > 0 && (
+        <div className="card flex flex-wrap items-center gap-2 p-3">
+          <input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search name, role, notes…"
+            className="input mt-0 w-48"
+          />
+          <select value={fKind} onChange={(e) => setFKind(e.target.value as "all" | EntityKind)} className="rounded border border-zinc-300 bg-white px-2 py-1.5 text-sm">
+            <option value="all">All types</option>
+            <option value="person">People</option>
+            <option value="system">Systems</option>
+            <option value="concept">Concepts</option>
+          </select>
+          <select value={fClient} onChange={(e) => setFClient(e.target.value)} className="max-w-52 rounded border border-zinc-300 bg-white px-2 py-1.5 text-sm">
+            <option value="all">Any client</option>
+            {clientOptions.map((c) => <option key={c} value={c}>{c}</option>)}
+          </select>
+          <select value={fOrg} onChange={(e) => setFOrg(e.target.value)} className="max-w-44 rounded border border-zinc-300 bg-white px-2 py-1.5 text-sm">
+            <option value="all">Any org</option>
+            {orgOptions.map((o) => <option key={o} value={o}>{o}</option>)}
+          </select>
+          <select value={fProv} onChange={(e) => setFProv(e.target.value as "all" | "derived" | "asserted")} className="rounded border border-zinc-300 bg-white px-2 py-1.5 text-sm">
+            <option value="all">Any status</option>
+            <option value="derived">Derived (unconfirmed)</option>
+            <option value="asserted">Asserted</option>
+          </select>
+          <span className="text-xs text-zinc-500">
+            {filtered.length} of {entities.length}
+          </span>
+          {activeFilters > 0 && (
+            <button onClick={clearFilters} className="text-xs text-indigo-600 hover:underline">
+              Clear filters
+            </button>
+          )}
+        </div>
+      )}
+
       {/* Current entities, grouped by kind */}
       {entities.length === 0 ? (
         <p className="rounded-lg border border-dashed border-zinc-300 bg-white p-6 text-sm text-zinc-500">
           No entities yet. Extract from your overviews or add one above.
+        </p>
+      ) : filtered.length === 0 ? (
+        <p className="rounded-lg border border-dashed border-zinc-300 bg-white p-6 text-sm text-zinc-500">
+          No entities match these filters. <button onClick={clearFilters} className="text-indigo-600 hover:underline">Clear filters</button>
         </p>
       ) : (
         (["person", "system", "concept"] as EntityKind[]).map((kind) =>
