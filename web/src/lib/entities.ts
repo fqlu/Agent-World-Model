@@ -44,8 +44,12 @@ export function parseEntityFile(md: string): Entity | null {
   }
   if (!data || typeof data !== "object") return null;
   const d = data as Record<string, unknown>;
-  if (typeof d.name !== "string" || typeof d.kind !== "string") return null;
-  if (!KINDS.includes(d.kind as EntityKind)) return null;
+  if (typeof d.name !== "string") return null;
+  // `kind` is our field; accept OKF's `type` as a fallback so OKF-authored
+  // concepts import cleanly.
+  const kindRaw = typeof d.kind === "string" ? d.kind : typeof d.type === "string" ? d.type : "";
+  if (!KINDS.includes(kindRaw as EntityKind)) return null;
+  d.kind = kindRaw;
   const attrs: Record<string, string> = {};
   if (d.attributes && typeof d.attributes === "object") {
     for (const [k, v] of Object.entries(d.attributes as Record<string, unknown>)) {
@@ -81,6 +85,7 @@ export function parseEntityFile(md: string): Entity | null {
 export function serializeEntity(e: Entity): string {
   const front: Record<string, unknown> = {
     name: e.name,
+    type: e.kind, // OKF-required field (mirrors kind); makes the file a valid OKF concept
     kind: e.kind,
     aliases: e.aliases,
     source: e.source,

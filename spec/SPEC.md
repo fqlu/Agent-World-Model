@@ -1,6 +1,6 @@
 # Drive Context Protocol — Specification
 
-**Version:** 0.11.0 (draft)
+**Version:** 0.12.0 (draft)
 **Status:** 🟠 Draft — under review by James Lu
 **Reference implementation:** a personal knowledge-work Drive (`incubeta` profile)
 
@@ -50,7 +50,7 @@ declares where those primitives are mounted in a root topology manifest,
 `_Workspace.yaml`:
 
 ```yaml
-spec_version: 0.11.0
+spec_version: 0.12.0
 profile: incubeta
 mounts:
   areas: [Clients, Internal]   # scope-bearing folders (≥1, any names)
@@ -580,6 +580,27 @@ non-Incubeta structure. The **`incubeta`** profile adds (full definition in
   deployments cross-linked both ways.
 
 ---
+
+## 12. OKF interoperability (export)
+
+DCP positions itself as a **governed superset of Google's Open Knowledge
+Format (OKF v0.1)**. A workspace exports to a conformant OKF bundle so any
+OKF consumer can read it; the governance layer (audit, rules, lifecycle,
+provenance, sync) is what OKF deliberately omits. Full mapping in
+`OKF-COMPAT.md`. Two pieces:
+
+- **Frontmatter alignment.** Entity files carry an OKF `type` field (mirroring
+  their `kind`) so each is a valid OKF concept on its own. Our richer fields
+  (`kind`, `source`, `confirmed`, `relations`) remain — OKF requires consumers
+  to preserve unknown fields.
+- **Bundle export.** Tooling emits a conformant OKF bundle (a directory of
+  concept documents, each with a required `type`, plus reserved `index.md`
+  and `log.md`). Entities → concepts typed by kind; scopes → `Scope` concepts
+  from their overviews; context groups → `Group` concepts; house rules → a
+  `Reference` concept so consuming agents inherit them. Typed relationships
+  export as bundle-relative links (OKF-valid) **and** a `dcp_relations` extra
+  field (lossless round-trip for DCP-aware consumers). The bundle is a
+  generated artifact, regenerated on demand — never canonical.
 
 ## 11. Out of scope for v0.1 (deliberate)
 

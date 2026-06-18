@@ -23,6 +23,7 @@ that structure on a connected Google Drive.
 | M3.9 | Maintenance loop — on-demand change detection + sync, deterministic, with agent reflection scaffold (spec v0.9) | 🟢 |
 | M3.10 | Governance visibility — per-workspace rule config (see + tune severities/conventions) in `_Workspace.yaml`, fed into audit + AGENTS.md (spec v0.10) | 🟢 |
 | M3.11 | House rules — author rules in plain language (agents follow via AGENTS.md) + optional declarative checks (filename prefix, forbidden substring) the audit enforces (spec v0.11) | 🟢 |
+| M3.12 | OKF interoperability (Phase 1) — entity frontmatter `type` alignment + Export OKF bundle (conformant concepts + index.md/log.md); DCP as a governed superset of Google's Open Knowledge Format v0.1 (spec v0.12) | 🟢 |
 | M4 | Cloud Run deployment, incubeta.com-restricted OAuth | ⬜ |
 | Later | GTM container audit module, contacts, shared team zones | ⬜ |
 

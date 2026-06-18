@@ -4,6 +4,7 @@ import { q } from "@/lib/db";
 import { runAuditAction, createProposalAction, regenerateIndexAction } from "@/app/actions";
 import type { AuditStats } from "@/lib/linter";
 import SyncPanel from "./sync-panel";
+import OkfButton from "./okf-button";
 
 export const dynamic = "force-dynamic";
 
@@ -36,6 +37,7 @@ export default async function WorkspacePage({ params }: { params: Promise<{ id: 
       </div>
 
       <SyncPanel wsId={ws.id} />
+      <OkfButton wsId={ws.id} />
 
       <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {/* 1 — Audit */}

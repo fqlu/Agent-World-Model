@@ -256,6 +256,22 @@ export async function saveRulesSvc(
   return { ok: true };
 }
 
+export async function exportOkfSvc(wsId: number) {
+  const ws = q.getWorkspace(wsId);
+  if (!ws) throw new Error(`Workspace ${wsId} not found`);
+  const c = connectorFor(ws);
+  const { exportOkfBundle } = await import("./okf-export");
+  const result = await exportOkfBundle(c, ws.id, ws.name);
+  try {
+    const declRaw = await c.read("_Workspace.yaml");
+    const journal = (declRaw ? parseWorkspaceYaml(declRaw) : null)?.mounts?.journal ?? "Journal";
+    await journalAgentActivity(c, journal, `exported OKF bundle — ${result.concepts} concept(s)`);
+  } catch {
+    /* journal best-effort */
+  }
+  return result;
+}
+
 export async function regenerateIndexSvc(wsId: number): Promise<boolean> {
   const ws = q.getWorkspace(wsId);
   if (!ws) throw new Error(`Workspace ${wsId} not found`);
