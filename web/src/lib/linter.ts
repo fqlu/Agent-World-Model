@@ -5,6 +5,7 @@ import { parseGroupFile, DEFAULT_CONTEXT_DIR } from "./context";
 import { parseEntityFile } from "./entities";
 import {
   parseWorkspaceYaml,
+  parseFrontmatter,
   WorkspaceDecl,
   allowedForms,
   checkPipeName,
@@ -318,6 +319,17 @@ export async function runAudit(c: Connector, profileName = "incubeta"): Promise<
         }
         if (NON_ISO_DATE.test(child.name)) {
           add("NM-002", child.path, `Scope name contains a non-ISO date: "${child.name}"`);
+        }
+        // DC-001 — workstream/project scopes directly under an entity (depth-2)
+        // declare a scope_type. (chain is [entity] at depth-2.)
+        if (chain.length === (manifest.scopes.scope_type_required_at_depth ?? 2) - 1) {
+          const ovPath = `${child.path}/${manifest.scopes.context_file}`;
+          const ovMd = await c.read(ovPath);
+          const st = ovMd !== null ? (parseFrontmatter(ovMd).data.scope_type as string | undefined) : undefined;
+          const allowed = manifest.scopes.scope_types ?? ["workstream", "project"];
+          if (!st || !allowed.includes(st)) {
+            add("DC-001", child.path, st ? `scope_type "${st}" not one of ${allowed.join(", ")}` : `Scope is missing a scope_type (${allowed.join("/")}) — see §3.1`);
+          }
         }
       }
 

@@ -60,6 +60,26 @@ whole world model as nodes + edges in one queryable document — the fastest
 way to traverse relationships without walking every file. `_Model.json` is
 generated; the entity files are canonical.
 
+## Where things go — filing decision
+
+When you create or file something, decide consistently (same rule for every
+client). Folders use ONE axis; everything else is a facet, not a folder:
+
+1. **Time-bound, with a goal and an end?** → a **project** scope
+   (`scope_type: project` in its `_Overview.md`), nested under the workstream
+   it serves (or a client-level group if cross-cutting).
+2. **An ongoing thing we're retained for** (product, function, brand, retainer)?
+   → a **workstream** scope (`scope_type: workstream`).
+3. **A platform (GA4/GTM), discipline (SEO/analytics), brand, or strategic
+   pillar/theme?** → a **facet**: a context group or an entity relationship —
+   NEVER a competing folder axis. (A group may set `kind: pillar`.)
+4. **Just a document or deliverable?** → a **file** inside the relevant scope,
+   not its own scope.
+
+Folders give consistency; facets and `_Model.json` give the cross-cutting big
+picture. Don't split one client by product and another by project — both are
+workstreams + projects, the same way.
+
 ## Operating rules
 
 1. **Read before write.** Entering a scope: `_Overview.md` → `_Tasks.md` (if

@@ -1,6 +1,6 @@
 # Drive Context Protocol — Specification
 
-**Version:** 0.12.0 (draft)
+**Version:** 0.13.0 (draft)
 **Status:** 🟠 Draft — under review by James Lu
 **Reference implementation:** a personal knowledge-work Drive (`incubeta` profile)
 
@@ -50,7 +50,7 @@ declares where those primitives are mounted in a root topology manifest,
 `_Workspace.yaml`:
 
 ```yaml
-spec_version: 0.12.0
+spec_version: 0.13.0
 profile: incubeta
 mounts:
   areas: [Clients, Internal]   # scope-bearing folders (≥1, any names)
@@ -115,6 +115,44 @@ whatever depth *you* choose to maintain — ceremony never exceeds value.
   cheap way to give it semantics without maintaining a context file.
 - Scopes MAY contain working files directly, collections, child scopes, and
   content folders.
+
+### 3.1 Decomposition — workstreams, projects, and facets
+
+Content-by-default says *which* folders are scopes; this says how to **divide a
+scope into child scopes consistently**, so one client is organised like every
+other and an agent always knows where to file. The rule is the taxonomy
+**principle of division**: at any level, children are split by *one* axis.
+
+Every scope carries a **`scope_type`** in its `_Overview.md` frontmatter:
+
+- **`workstream`** — an *ongoing* area of work with no end date: a product, a
+  function, a brand, a retainer (SR360, Offline CAPI, SEO). The default.
+- **`project`** — a *time-bound* effort with a goal and a close (Headless CMS
+  Migration, a one-off audit). Nests under the workstream it serves, or a
+  client-level grouping if cross-cutting.
+
+That single ongoing-vs-time-bound split is the structural hierarchy. Every
+other way you'd want to see the work — **platform** (GA4, GTM, BigQuery),
+**discipline** (analytics, SEO, paid media), **brand**, and **strategic
+pillar/theme** — is a **facet, not a folder**: expressed with context groups
+(§6.4) and entity relationships (§6.7), never as a competing folder axis. A
+group MAY set `kind: pillar` to mark a strategic theme.
+
+Why: a folder tree nests one way, so it can't show "all analytics work" or
+"the SEO pillar across clients" — facets and the world-model graph can, from
+many angles at once. **Folders give consistency; facets give the big picture.**
+
+The agent's filing decision (also in `AGENTS.md`):
+
+1. Time-bound, with a goal and an end? → **project**.
+2. Ongoing thing we're retained for? → **workstream**.
+3. A platform, discipline, brand, or strategic theme? → **a facet** (context
+   group / relationship), not a folder.
+4. Just a document or deliverable? → a **file** inside the relevant scope.
+
+`scope_type` SHOULD be declared on the workstream/project scopes directly under
+an entity. `[DC-001]` (warn) Deeper sub-scopes inherit their parent's nature
+unless they declare their own.
 
 ---
 
@@ -486,6 +524,7 @@ Severities: **error** (violates a MUST), **warn** (violates a SHOULD),
 | EN-002 | warn | Entity slug (name) matches filename |
 | RL-001 | error | Relationship `predicate` is in the workspace vocabulary |
 | RL-002 | warn | Relationship `target` resolves to an entity or existing scope |
+| DC-001 | warn | Workstream/project scopes (depth-2) declare a `scope_type` (§3.1) |
 | HR-n | (per rule) | Workspace house-rule check failed (§9.2; default warn) |
 
 Removed in v0.6 (content-by-default pivot): SC-002 (per-type subfolders),

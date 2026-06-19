@@ -1,6 +1,6 @@
 # Drive Context Protocol — machine-readable manifest
 # Mirrors SPEC.md §9. The linter consumes this file; SPEC.md is for humans.
-spec_version: 0.12.0
+spec_version: 0.13.0
 
 # Topology is declarative (SPEC §2): each workspace declares its own layout in
 # a root _Workspace.yaml; the linter validates against that declaration.
@@ -24,6 +24,8 @@ scopes:
   promotion: context_file_presence
   entity_overview_required: true     # SC-001 (entities only)
   optional_files: [_Tasks.md]
+  scope_types: [workstream, project] # §3.1 decomposition — declared in _Overview.md frontmatter
+  scope_type_required_at_depth: 2    # DC-001 (warn) — the workstream/project level under an entity
   recommended_sections:
     - "What it is"
     - "Active workstreams"
@@ -51,6 +53,7 @@ context:
   members: descendant_folder_paths               # relative to declaring folder; CX-002
   inheritance: down              # effective context = own + all ancestors'
   placement: lowest_common_ancestor              # guidance, not lint-enforced
+  group_kinds: [group, pillar]   # §3.1 — a group MAY be a strategic pillar/theme (facet)
 
 entities:                        # §6.6 — the "cast" of the world model
   default_mount: "_Entities"     # workspace-root registry, one file per entity
@@ -129,6 +132,7 @@ rules:
   - { id: EN-002, severity: warn,  summary: entity slug matches filename }
   - { id: RL-001, severity: error, summary: relationship predicate in vocabulary }
   - { id: RL-002, severity: warn,  summary: relationship target resolves to entity or scope }
+  - { id: DC-001, severity: warn,  summary: workstream/project scopes (depth-2) declare a scope_type }
 
 # Profiles layer org-specific rituals and template overrides onto the core
 # protocol. Template overrides live in spec/templates/profiles/<profile>/ and

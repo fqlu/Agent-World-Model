@@ -23,6 +23,8 @@ export type SpecManifest = {
     entity_overview_required: boolean;
     optional_files: string[];
     recommended_sections: string[];
+    scope_types?: string[];
+    scope_type_required_at_depth?: number;
   };
   collections: {
     wip_notes: { suffix: string; file_pattern: string; required_sections: string[] };

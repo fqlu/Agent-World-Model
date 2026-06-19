@@ -1,3 +1,10 @@
+---
+# scope_type: workstream | project   — ongoing vs time-bound (§3.1).
+# Declare on workstream/project scopes directly under a client. Omit on the
+# client entity itself. Platform / discipline / brand / pillar are facets
+# (context groups), not folders.
+scope_type: workstream
+---
 # [Scope name]
 
 > **Template — copy this when creating a new `_Overview.md` for any scope

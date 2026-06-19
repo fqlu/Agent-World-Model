@@ -15,7 +15,10 @@ import {
 const WIP_SUFFIX = "WIP Notes";
 
 function renderScopeOverview(name: string, profile?: string): string {
-  return loadTemplate("_Overview.md", profile)
+  // Strip the template's leading frontmatter — generated entity overviews are
+  // the client level, which doesn't carry scope_type (§3.1).
+  const raw = loadTemplate("_Overview.md", profile).replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n?/, "");
+  return raw
     .replace("# [Scope name]", `# ${name}`)
     .split("\n")
     .filter((l) => !l.startsWith(">"))

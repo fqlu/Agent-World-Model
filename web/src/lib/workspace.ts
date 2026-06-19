@@ -36,6 +36,18 @@ export type WorkspaceDecl = {
   house_rules?: HouseRule[];
 };
 
+// Parse leading YAML frontmatter from any markdown file (e.g. _Overview.md).
+export function parseFrontmatter(md: string): { data: Record<string, unknown>; body: string } {
+  const m = md.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n?([\s\S]*)$/);
+  if (!m) return { data: {}, body: md };
+  try {
+    const d = YAML.parse(m[1]);
+    return { data: d && typeof d === "object" ? (d as Record<string, unknown>) : {}, body: m[2] };
+  } catch {
+    return { data: {}, body: m[2] };
+  }
+}
+
 export function parseWorkspaceYaml(content: string): WorkspaceDecl | null {
   try {
     const parsed = YAML.parse(content);

@@ -99,8 +99,11 @@ export async function exportOkfBundle(c: Connector, workspaceId: number, workspa
     const links = edgesFrom(n.id)
       .map((e) => `- ${e.predicate} → [${e.to.replace(/^.*:/, "")}](${href.get(e.to) ?? e.to})`)
       .join("\n");
+    // Use the declared scope_type as the OKF concept type when present.
+    const st = n.attributes?.scope_type;
+    const conceptType = st === "project" ? "Project" : st === "workstream" ? "Workstream" : "Scope";
     const fm = frontmatter({
-      type: "Scope",
+      type: conceptType,
       title: n.label,
       description: overview ? firstSentence(stripFrontmatter(overview)) : "",
       resource: scopePath,

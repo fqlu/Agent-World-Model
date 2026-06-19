@@ -1,5 +1,5 @@
 import { Connector } from "./connector";
-import { parseWorkspaceYaml } from "./workspace";
+import { parseWorkspaceYaml, parseFrontmatter } from "./workspace";
 import { listEntities, Entity } from "./entities";
 import { parseGroupFile, DEFAULT_CONTEXT_DIR } from "./context";
 
@@ -39,17 +39,20 @@ async function readDecl(c: Connector) {
 // Promoted scopes = folders containing _Overview.md (entities + promoted).
 export async function promotedScopes(
   c: Connector,
-): Promise<{ path: string; name: string }[]> {
+): Promise<{ path: string; name: string; scopeType?: string }[]> {
   const decl = await readDecl(c);
   const areas = decl?.mounts?.areas ?? [];
-  const out: { path: string; name: string }[] = [];
+  const out: { path: string; name: string; scopeType?: string }[] = [];
   async function walk(path: string, depth: number) {
     if (depth > 4) return;
     for (const e of await c.list(path)) {
       if (e.kind !== "folder" || e.name.startsWith("_") || e.name.endsWith(" | WIP Notes")) continue;
       const children = await c.list(e.path);
-      if (children.some((x) => x.name === "_Overview.md")) {
-        out.push({ path: e.path, name: e.name });
+      const ov = children.find((x) => x.name === "_Overview.md");
+      if (ov) {
+        const md = await c.read(ov.path);
+        const st = md !== null ? (parseFrontmatter(md).data.scope_type as string | undefined) : undefined;
+        out.push({ path: e.path, name: e.name, scopeType: st });
       }
       await walk(e.path, depth + 1);
     }
@@ -74,7 +77,13 @@ export async function buildModel(c: Connector): Promise<WorldModel | null> {
 
   // Scope nodes
   const scopes = await promotedScopes(c);
-  for (const s of scopes) addNode({ id: `scope:${s.path}`, kind: "scope", label: s.name });
+  for (const s of scopes)
+    addNode({
+      id: `scope:${s.path}`,
+      kind: "scope",
+      label: s.name,
+      attributes: s.scopeType ? { scope_type: s.scopeType } : undefined,
+    });
 
   // Entity nodes
   let entities: Entity[] = [];

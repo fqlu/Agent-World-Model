@@ -25,6 +25,8 @@ that structure on a connected Google Drive.
 | M3.11 | House rules — author rules in plain language (agents follow via AGENTS.md) + optional declarative checks (filename prefix, forbidden substring) the audit enforces (spec v0.11) | 🟢 |
 | M3.12 | OKF interoperability (Phase 1) — entity frontmatter `type` alignment + Export OKF bundle (conformant concepts + index.md/log.md); DCP as a governed superset of Google's Open Knowledge Format v0.1 (spec v0.12) | 🟢 |
 | M3.13 | UX — entities filter (type/client/org/provenance/search) + Glossary page + header nav | 🟢 |
+| M3.14 | UX — world-model graph filtering (focus by client/group + node-type toggles) | 🟢 |
+| M3.15 | Decomposition convention (spec v0.13) — workstream/project `scope_type` + filing decision tree in AGENTS.md + pillars/facets as context groups + DC-001 audit | 🟢 |
 | M4 | Cloud Run deployment, incubeta.com-restricted OAuth | ⬜ |
 | Later | GTM container audit module, contacts, shared team zones | ⬜ |
 
