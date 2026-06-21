@@ -1,9 +1,15 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { q } from "@/lib/db";
-import { runAuditAction, createProposalAction, regenerateIndexAction } from "@/app/actions";
+import {
+  runAuditAction,
+  createProposalAction,
+  regenerateIndexAction,
+  removeWorkspaceAction,
+} from "@/app/actions";
 import type { AuditStats } from "@/lib/linter";
 import SyncPanel from "./sync-panel";
+import RemoveWorkspace from "./remove-workspace";
 import OkfButton from "./okf-button";
 
 export const dynamic = "force-dynamic";
@@ -263,6 +269,8 @@ export default async function WorkspacePage({ params }: { params: Promise<{ id: 
           )}
         </div>
       </section>
+
+      <RemoveWorkspace action={removeWorkspaceAction.bind(null, ws.id)} name={ws.name} />
     </div>
   );
 }

@@ -152,6 +152,16 @@ export const q = {
       (r) => r.email,
     ),
 
+  // Removes only the app's record of a workspace (row + its audits/proposals/
+  // sync state). NEVER touches the workspace's files on disk/Drive.
+  deleteWorkspace: (id: number) => {
+    const db = getDb();
+    db.prepare("DELETE FROM audits WHERE workspace_id = ?").run(id);
+    db.prepare("DELETE FROM proposals WHERE workspace_id = ?").run(id);
+    db.prepare("DELETE FROM sync_state WHERE workspace_id = ?").run(id);
+    db.prepare("DELETE FROM workspaces WHERE id = ?").run(id);
+  },
+
   getSyncState: (workspaceId: number) =>
     getDb().prepare("SELECT manifest, synced_at FROM sync_state WHERE workspace_id = ?").get(workspaceId) as
       | { manifest: string; synced_at: string }

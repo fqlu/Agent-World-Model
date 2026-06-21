@@ -27,6 +27,13 @@ export async function regenerateIndexAction(wsId: number) {
   redirect(`/w/${wsId}`);
 }
 
+export async function removeWorkspaceAction(wsId: number) {
+  // Only removes the app's reference — the Drive folder and files are untouched.
+  q.deleteWorkspace(wsId);
+  revalidatePath("/");
+  redirect("/");
+}
+
 export async function runAuditAction(wsId: number) {
   const { auditId } = await runAuditSvc(wsId);
   redirect(`/w/${wsId}/audit/${auditId}`);
