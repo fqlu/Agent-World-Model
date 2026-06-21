@@ -20,6 +20,14 @@ function ProfileSelect() {
           </option>
         ))}
       </select>
+      <span className="mt-1 block text-xs font-normal text-zinc-500">
+        The starter folder layout, templates, and org rituals. Pick{" "}
+        <span className="font-mono">incubeta</span> for Incubeta work,{" "}
+        <span className="font-mono">core</span> for a neutral Drive.{" "}
+        <Link href="/profiles" className="text-indigo-600 hover:underline">
+          What&apos;s in each?
+        </Link>
+      </span>
     </label>
   );
 }
