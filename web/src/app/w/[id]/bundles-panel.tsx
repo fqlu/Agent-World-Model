@@ -120,9 +120,13 @@ export default function BundlesPanel({ wsId }: { wsId: number }) {
         </button>
       </div>
       <p className="mt-2 text-xs text-zinc-500">
-        The workspace is the workshop; a bundle is the product — a named, generated OKF projection
-        (whole workspace, one client, or one context group) that any OKF-aware agent can read.
-        Bundles live in the app&apos;s data dir; your workspace files are untouched.
+        The workspace is the workshop; a bundle is the product — a named OKF projection any
+        OKF-aware agent can read. Building one is <strong>deterministic, not AI</strong>: the app
+        compiles it from your world model by rule — pick a slice (whole workspace, one client, or
+        one context group) and it mechanically includes that slice&apos;s scopes, the entities
+        related to them, the groups touching them, and the journal sections about them. Click a
+        bundle&apos;s name to browse exactly what&apos;s inside. Bundles live in the app&apos;s
+        data dir; your workspace files are untouched.
       </p>
 
       {showForm && (
@@ -173,7 +177,12 @@ export default function BundlesPanel({ wsId }: { wsId: number }) {
               key={b.id}
               className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg border border-zinc-200 px-3 py-2 text-sm"
             >
-              <span className="font-medium text-zinc-900">{b.name}</span>
+              <a
+                href={`/w/${wsId}/bundles/${b.id}`}
+                className="font-medium text-indigo-700 hover:underline"
+              >
+                {b.name}
+              </a>
               <span className="badge bg-zinc-100 text-zinc-600">{scopeLabel(b)}</span>
               {b.stats && (
                 <span className="text-xs text-zinc-500">
