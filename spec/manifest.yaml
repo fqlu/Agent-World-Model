@@ -8,7 +8,7 @@ workspace:
   manifest_file: _Workspace.yaml
   rulebook_file: AGENTS.md             # cross-vendor agent auto-discovery standard
   required_root_files: [_Workspace.yaml, AGENTS.md, _Overview.md]     # ST-001
-  optional_root_files: [_Index.md, _Model.json]  # generated artifacts (§6.5, §6.8), exempt from ST-004
+  optional_root_files: [_Index.md, _Model.json, _Digest.md]  # generated artifacts (§6.5, §6.8, §6.9), exempt from ST-004
   required_capabilities: [journal, templates, archive]                # ST-003
   optional_capabilities: [context, entities]                          # §6.4, §6.6
   areas_min: 1                                                        # ST-003

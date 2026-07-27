@@ -18,7 +18,7 @@ export type SyncReport = {
 };
 
 // Derived artifacts are excluded so the loop never flags its own output.
-const EXCLUDE_FILES = new Set(["_Index.md", "_Model.json"]);
+const EXCLUDE_FILES = new Set(["_Index.md", "_Model.json", "_Digest.md"]);
 
 function hashText(s: string): string {
   return "t:" + crypto.createHash("sha1").update(s).digest("hex").slice(0, 16);
