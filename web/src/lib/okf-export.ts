@@ -342,6 +342,14 @@ export async function exportOkfBundle(
   for (const [section, lines] of sections) index += `## ${section}\n${lines.join("\n")}\n\n`;
   await fs.writeFile(path.join(outDir, "index.md"), index);
 
+  // Self-contained interactive graph (viz.html) — travels with the bundle.
+  try {
+    const { generateBundleViz } = await import("./okf-viz");
+    await generateBundleViz(outDir, bundleTitle);
+  } catch {
+    /* the bundle is valid without its viz */
+  }
+
   return { path: outDir, concepts: entityCount + scopeCount + groupCount + referenceCount, entities: entityCount, scopes: scopeCount, groups: groupCount, references: referenceCount };
 }
 

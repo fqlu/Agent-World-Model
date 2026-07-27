@@ -57,7 +57,14 @@ export default async function BundlePage({
         </h1>
         <p className="mt-1 text-xs text-zinc-500">
           {stats ? `${stats.concepts} concepts` : ""} · built {bundle.updated_at} ·{" "}
-          <span className="font-mono">{bundle.path}</span>
+          <a
+            href={`/api/workspaces/${ws.id}/bundles/${bundle.id}/viz`}
+            target="_blank"
+            className="text-indigo-600 hover:underline"
+          >
+            open graph ↗
+          </a>{" "}
+          · <span className="font-mono">{bundle.path}</span>
         </p>
       </div>
 

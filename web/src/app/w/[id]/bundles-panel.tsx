@@ -206,6 +206,13 @@ export default function BundlesPanel({ wsId }: { wsId: number }) {
               )}
               <span className="text-xs text-zinc-400">built {b.updatedAt}</span>
               <span className="ml-auto flex items-center gap-2">
+                <a
+                  href={`/api/workspaces/${wsId}/bundles/${b.id}/viz`}
+                  target="_blank"
+                  className="text-xs text-indigo-600 hover:underline"
+                >
+                  Graph
+                </a>
                 <button
                   onClick={() => refresh(b.id)}
                   disabled={busyId !== null}
