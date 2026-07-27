@@ -1,6 +1,6 @@
 # Drive Context Protocol — Specification
 
-**Version:** 0.13.0 (draft)
+**Version:** 0.14.0 (draft)
 **Status:** 🟠 Draft — under review by James Lu
 **Reference implementation:** a personal knowledge-work Drive (`incubeta` profile)
 
@@ -50,7 +50,7 @@ declares where those primitives are mounted in a root topology manifest,
 `_Workspace.yaml`:
 
 ```yaml
-spec_version: 0.13.0
+spec_version: 0.14.0
 profile: incubeta
 mounts:
   areas: [Clients, Internal]   # scope-bearing folders (≥1, any names)
@@ -163,9 +163,11 @@ Collections are folders of homogeneous, dated records.
 ### 4.1 WIP Notes
 
 - Name: `<scope pipe-name> | WIP Notes`.
-- Contents: meeting / working-session notes named `YYYY-MM-DD.md`, following
-  the WIP Note template. Same-day follow-ups merge into the day's file rather
-  than creating a second file. `[CL-001]` `[CL-002]`
+- Contents: meeting / working-session notes named `YYYY-MM-DD.md` or
+  `YYYY-MM-DD - Title.md` (v0.14 — the date prefix is mandatory and keeps
+  sorting + journal linking; the optional title adds scanability), following
+  the WIP Note template. Same-day notes on the same topic merge into one file;
+  distinct same-day meetings MAY use distinct titled files. `[CL-001]` `[CL-002]`
 - Placement rule: notes scoped to one unit/sub-project live in that scope's
   WIP Notes; cross-unit entity meetings live in the entity-level WIP Notes.
 
@@ -196,6 +198,14 @@ the convention — it helps search — but are not linted): `[NM-001]`
   segment — `Hanesbrands (Hanes)`, `TMCA | NVI (New Vehicle Inventory)` — and
   descendants use the short form: `Hanes | Bonds`, `TMCA | NVI | Floodlight`.
   If no parenthesised short name exists, the full segment is the short name.
+- **Declared aliases (v0.14).** A scope MAY declare additional short forms in
+  its `_Overview.md` frontmatter — `aliases: [Crown]` — and descendants may
+  use any declared alias as the ancestry segment: `Crown | Measurement
+  Governance` under `Crown Resorts/`. Aliases fix the name-drift problem
+  without folder renames: agents naturally shorten client names, and the
+  declaration makes the short form official rather than an error. Prefer a
+  parenthetical short name for new folders; use `aliases:` to legitimise
+  forms that already exist in the wild.
 - Rationale: every folder is self-describing in Drive search results and in
   agent tool output, at the cost of renames cascading. Tools MUST treat a
   parent rename as a propagating operation (§8).

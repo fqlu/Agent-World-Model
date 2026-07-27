@@ -72,6 +72,16 @@ export function allowedForms(segment: string): Set<string> {
   return forms;
 }
 
+// v0.14: a scope may declare extra short forms in its _Overview.md frontmatter
+// (`aliases: [Crown]`). These join the parenthetical forms for ancestry checks.
+export function declaredAliases(overviewMd: string | null): string[] {
+  if (!overviewMd) return [];
+  const { data } = parseFrontmatter(overviewMd);
+  const a = data.aliases;
+  if (!Array.isArray(a)) return [];
+  return a.map(String).map((s) => s.trim()).filter(Boolean);
+}
+
 export const PIPE = " | ";
 
 // Check a scope/collection folder name against its ancestor chain.

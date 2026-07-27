@@ -8,6 +8,7 @@ import {
   parseFrontmatter,
   WorkspaceDecl,
   allowedForms,
+  declaredAliases,
   checkPipeName,
   PIPE,
 } from "./workspace";
@@ -38,7 +39,9 @@ export type AuditResult = {
 };
 
 const WIP_SUFFIX = "WIP Notes";
-const WIP_FILE = /^\d{4}-\d{2}-\d{2}\.md$/;
+// v0.14: an optional " - Title" suffix after the date is allowed — the date
+// prefix preserves sorting and journal linking; the title adds scanability.
+const WIP_FILE = /^\d{4}-\d{2}-\d{2}( - .+)?\.md$/;
 const JOURNAL_FILE = /^\d{4}-\d{2}-\d{2}\.md$/;
 const NON_ISO_DATE = /\b(\d{1,2}[./]\d{1,2}[./]\d{4}|\((January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{4}\))/;
 
@@ -161,14 +164,18 @@ export async function runAudit(c: Connector, profileName = "incubeta"): Promise<
       }
       const children = await c.list(entity.path);
       const hasOverview = children.some((e) => e.name === manifest.scopes.context_file);
+      const entityForms = allowedForms(entity.name);
       if (!hasOverview) {
         // SC-001 — entities are the mandatory context anchor
         add("SC-001", entity.path, `Entity is missing ${manifest.scopes.context_file}`);
       } else {
         stats.scopes++;
         stats.overviews++;
+        // v0.14 — declared aliases join the ancestry forms (SPEC §3.2)
+        const ovMd = await c.read(`${entity.path}/${manifest.scopes.context_file}`);
+        for (const a of declaredAliases(ovMd)) entityForms.add(a);
       }
-      await walkFolder(entity, children, [allowedForms(entity.name)]);
+      await walkFolder(entity, children, [entityForms]);
     }
   }
 
@@ -311,9 +318,11 @@ export async function runAudit(c: Connector, profileName = "incubeta"): Promise<
       const grandchildren = await c.list(child.path);
       const promoted = grandchildren.some((e) => e.name === manifest.scopes.context_file);
 
+      let scopeOverviewMd: string | null = null;
       if (promoted) {
         stats.scopes++;
         stats.overviews++;
+        scopeOverviewMd = await c.read(`${child.path}/${manifest.scopes.context_file}`);
         if (!pipeCheck.ok) {
           add("NM-001", child.path, `Scope name should start with "${pipeCheck.expectedPrefix}${PIPE}…" mirroring its ancestry`);
         }
@@ -323,9 +332,7 @@ export async function runAudit(c: Connector, profileName = "incubeta"): Promise<
         // DC-001 — workstream/project scopes directly under an entity (depth-2)
         // declare a scope_type. (chain is [entity] at depth-2.)
         if (chain.length === (manifest.scopes.scope_type_required_at_depth ?? 2) - 1) {
-          const ovPath = `${child.path}/${manifest.scopes.context_file}`;
-          const ovMd = await c.read(ovPath);
-          const st = ovMd !== null ? (parseFrontmatter(ovMd).data.scope_type as string | undefined) : undefined;
+          const st = scopeOverviewMd !== null ? (parseFrontmatter(scopeOverviewMd).data.scope_type as string | undefined) : undefined;
           const allowed = manifest.scopes.scope_types ?? ["workstream", "project"];
           if (!st || !allowed.includes(st)) {
             add("DC-001", child.path, st ? `scope_type "${st}" not one of ${allowed.join(", ")}` : `Scope is missing a scope_type (${allowed.join("/")}) — see §3.1`);
@@ -336,6 +343,8 @@ export async function runAudit(c: Connector, profileName = "incubeta"): Promise<
       const ownForms = pipeCheck.ownSegment
         ? allowedForms(pipeCheck.ownSegment)
         : allowedForms(child.name);
+      // v0.14 — declared aliases join the scope's forms for descendant checks
+      for (const a of declaredAliases(scopeOverviewMd)) ownForms.add(a);
       await walkFolder(child, grandchildren, [...chain, ownForms]);
     }
   }
@@ -371,7 +380,7 @@ export async function runAudit(c: Connector, profileName = "incubeta"): Promise<
     for (const n of notes) {
       if (n.kind === "folder") continue;
       if (!WIP_FILE.test(n.name)) {
-        add("CL-001", n.path, `WIP note not named YYYY-MM-DD.md: "${n.name}"`);
+        add("CL-001", n.path, `WIP note not named "YYYY-MM-DD.md" (or "YYYY-MM-DD - Title.md"): "${n.name}"`);
         continue;
       }
       stats.wipNotes++;

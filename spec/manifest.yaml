@@ -1,6 +1,6 @@
 # Drive Context Protocol — machine-readable manifest
 # Mirrors SPEC.md §9. The linter consumes this file; SPEC.md is for humans.
-spec_version: 0.13.0
+spec_version: 0.14.0
 
 # Topology is declarative (SPEC §2): each workspace declares its own layout in
 # a root _Workspace.yaml; the linter validates against that declaration.
@@ -36,7 +36,7 @@ scopes:
 collections:
   wip_notes:
     suffix: " | WIP Notes"
-    file_pattern: '^\d{4}-\d{2}-\d{2}\.md$'   # CL-001
+    file_pattern: '^\d{4}-\d{2}-\d{2}( - .+)?\.md$'   # CL-001 (v0.14: optional ' - Title' suffix)
     template: "WIP Note.md"
     required_sections: [Discussion, Decisions, Actions]   # CL-002, warn
   journal:
@@ -91,7 +91,7 @@ projection:                      # §6.8 — generated world-model snapshot
 naming:
   pipe_separator: " | "
   entity_no_pipes: true              # NM-003
-  ancestry_prefix: short_name_aware  # NM-001; short name = trailing "(...)" of own segment
+  ancestry_prefix: short_name_aware  # NM-001; short name = trailing "(...)" of own segment, or declared `aliases:` in the scope's _Overview.md (v0.14)
   iso_dates: true                    # NM-002
   context_file_prefix: "_"
 
@@ -115,7 +115,7 @@ rules:
   - { id: ST-004, severity: warn,  summary: no undeclared root items }
   - { id: ST-005, severity: error, summary: AGENTS.md in sync with _Workspace.yaml }
   - { id: SC-001, severity: error, summary: every entity (depth-1 in area) has _Overview.md }
-  - { id: CL-001, severity: error, summary: WIP notes named YYYY-MM-DD.md }
+  - { id: CL-001, severity: error, summary: WIP notes named YYYY-MM-DD.md (optional ' - Title' suffix) }
   - { id: CL-002, severity: warn,  summary: WIP note follows template sections }
   - { id: NM-001, severity: error, summary: promoted scopes/collections pipe-name mirrors ancestry }
   - { id: NM-002, severity: warn,  summary: promoted scopes use ISO dates in names }

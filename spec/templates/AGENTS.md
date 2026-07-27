@@ -37,7 +37,8 @@ one is a **content folder** (documents, assets): it needs no context files —
 its context is the nearest scope above it plus any context groups it belongs
 to. Never add context machinery to content folders uninvited. Scopes may
 also have a `_Tasks.md` (open commitments). Folders named `… | WIP Notes`
-hold dated meeting/work notes (`YYYY-MM-DD.md`). A generated `_Index.md` at
+hold dated meeting/work notes (`YYYY-MM-DD.md`, or `YYYY-MM-DD - Title.md`
+when a title helps — the date prefix is mandatory). A generated `_Index.md` at
 the root maps every scope, entity, and context group — use it for
 orientation, but the tree and the source files are canonical.
 
@@ -97,7 +98,10 @@ workstreams + projects, the same way.
    Completed items move to `## Done` — they are memory, not clutter.
 7. **Naming is load-bearing.** Scope folders carry their ancestry:
    `<Entity short> | <Unit> | <Sub-project>`. Dates are ISO `YYYY-MM-DD`.
-   Renames cascade to descendants — propose, don't improvise.
+   Short forms come from a trailing parenthetical — `Hanesbrands (Hanes)` —
+   or from `aliases:` declared in the scope's `_Overview.md` frontmatter;
+   use a declared form, never invent a new abbreviation. Renames cascade to
+   descendants — propose, don't improvise.
 8. **Propose structural changes.** New scopes, renames, moves, migrations:
    present a plan to the human before executing. Content edits within the
    rituals above don't need approval.
