@@ -630,26 +630,47 @@ non-Incubeta structure. The **`incubeta`** profile adds (full definition in
 
 ---
 
-## 12. OKF interoperability (export)
+## 12. OKF interoperability (bundles & trust)
 
 DCP positions itself as a **governed superset of Google's Open Knowledge
-Format (OKF v0.1)**. A workspace exports to a conformant OKF bundle so any
-OKF consumer can read it; the governance layer (audit, rules, lifecycle,
-provenance, sync) is what OKF deliberately omits. Full mapping in
-`OKF-COMPAT.md`. Two pieces:
+Format (OKF v0.2)**. A workspace exports to conformant OKF bundles so any
+OKF consumer can read them; the governance layer (audit, rules, repair,
+sync) is what OKF deliberately omits. Full mapping in `OKF-COMPAT.md`.
+
+**The Drive is the workshop; the bundle is the product.** The workspace root
+is NOT itself claimed as an OKF bundle — deliverables and draft outputs are
+never concepts (they are `resource` targets that concepts point to). Only
+generated bundles claim `okf_version`.
 
 - **Frontmatter alignment.** Entity files carry an OKF `type` field (mirroring
   their `kind`) so each is a valid OKF concept on its own. Our richer fields
   (`kind`, `source`, `confirmed`, `relations`) remain — OKF requires consumers
   to preserve unknown fields.
-- **Bundle export.** Tooling emits a conformant OKF bundle (a directory of
-  concept documents, each with a required `type`, plus reserved `index.md`
-  and `log.md`). Entities → concepts typed by kind; scopes → `Scope` concepts
-  from their overviews; context groups → `Group` concepts; house rules → a
-  `Reference` concept so consuming agents inherit them. Typed relationships
+- **Trust signals (v0.14, from OKF v0.2).** Entity files and scope overviews
+  MAY carry `generated: {by, at}` (who/when produced it — actor convention:
+  `human:<id>` | `<producer>/<version>` | `process:<id>`), `verified:` (a list
+  of `{by, at, note?}` confirmation events), `sources:` (`{id?, resource,
+  title?}` provenance refs), `status: draft|stable|deprecated` (default
+  stable), and `stale_after: YYYY-MM-DD`. Trust tier is derived: any
+  `human:` verification → *human-reviewed*; any verification →
+  *machine-confirmed*; else *unverified*. **The save ritual is the trust
+  event**: tooling stamps `generated` on new entity files and appends a
+  `verified: human:<owner>` event when the owner confirms a derived entity
+  (derived → asserted) — verification is never fabricated. Hygiene:
+  `[TR-001]` warns when `stale_after` is breached (unless deprecated);
+  `[TR-002]` warns on malformed trust fields.
+- **Bundle export.** Tooling emits conformant OKF v0.2 bundles — a directory
+  of concept documents, each with a required `type`, plus reserved `index.md`
+  and `log.md`. A workspace produces MANY named bundles: whole-workspace, one
+  client's subtree (entities, groups, and journal log sliced to match), or
+  one context group's members. Entities → concepts typed by kind; scopes →
+  `Workstream`/`Project`/`Scope` concepts from their overviews; context
+  groups → `Group` concepts; house rules → a `Reference` concept so consuming
+  agents inherit them. Trust fields export as-is; `timestamp` is emitted only
+  as a v0.1 fallback when no `generated` stamp exists. Typed relationships
   export as bundle-relative links (OKF-valid) **and** a `dcp_relations` extra
-  field (lossless round-trip for DCP-aware consumers). The bundle is a
-  generated artifact, regenerated on demand — never canonical.
+  field (lossless round-trip for DCP-aware consumers). Bundles are generated
+  artifacts, regenerated on demand — never canonical.
 
 ## 11. Out of scope for v0.1 (deliberate)
 

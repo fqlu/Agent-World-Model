@@ -66,6 +66,29 @@ export async function PUT(
         }
       }
     }
+    // Trust fields (OKF v0.2) — tolerated on input, normalised here
+    const generated =
+      raw.generated && typeof raw.generated.by === "string" && typeof raw.generated.at === "string"
+        ? { by: raw.generated.by, at: raw.generated.at }
+        : undefined;
+    const verified = Array.isArray(raw.verified)
+      ? raw.verified
+          .filter((v: { by?: unknown; at?: unknown }) => v && typeof v.by === "string" && typeof v.at === "string")
+          .map((v: { by: string; at: string; note?: unknown }) => ({
+            by: v.by,
+            at: v.at,
+            note: typeof v.note === "string" ? v.note : undefined,
+          }))
+      : [];
+    const sources = Array.isArray(raw.sources)
+      ? raw.sources
+          .filter((s: { resource?: unknown }) => s && typeof s.resource === "string")
+          .map((s: { id?: unknown; resource: string; title?: unknown }) => ({
+            id: typeof s.id === "string" ? s.id : undefined,
+            resource: s.resource,
+            title: typeof s.title === "string" ? s.title : undefined,
+          }))
+      : [];
     entities.push({
       slug,
       name: raw.name.trim(),
@@ -73,6 +96,11 @@ export async function PUT(
       aliases: Array.isArray(raw.aliases) ? raw.aliases.map(String) : [],
       source: raw.source === "derived" ? "derived" : "asserted",
       confirmed: typeof raw.confirmed === "string" ? raw.confirmed : undefined,
+      generated,
+      verified,
+      sources,
+      status: ["draft", "stable", "deprecated"].includes(raw.status) ? raw.status : undefined,
+      stale_after: typeof raw.stale_after === "string" ? raw.stale_after : undefined,
       attributes,
       relations,
       notes: typeof raw.notes === "string" ? raw.notes : "",

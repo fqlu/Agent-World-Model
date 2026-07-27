@@ -1,10 +1,23 @@
 # DCP ↔ OKF Compatibility Note
 
-**Status:** 🟠 Draft for review — analysis only, no code yet
-**OKF reference:** Open Knowledge Format v0.1 (Google Cloud, 2026-06-12) ·
+**Status:** 🟢 Implemented (export at OKF v0.2; import-tolerant frontmatter)
+**OKF reference:** Open Knowledge Format v0.2 (Google Cloud, 2026-07-25 — "trust
+signals"; v0.1 2026-06-12) ·
 [spec](https://github.com/GoogleCloudPlatform/knowledge-catalog/blob/main/okf/SPEC.md) ·
 [blog](https://cloud.google.com/blog/products/data-analytics/how-the-open-knowledge-format-can-improve-data-sharing/)
-**Our spec:** Drive Context Protocol (DCP) v0.11
+**Our spec:** Drive Context Protocol (DCP) v0.14
+
+> **v0.2 update (2026-07-27).** OKF v0.2 added the trust layer this note
+> originally listed as our superset: `generated: {by, at}` (deprecates
+> `timestamp`), `verified:` events with `human:<id>`/`<producer>/<version>`
+> actors, `sources:` frontmatter (deprecates body Citations), `status` +
+> `stale_after` lifecycle, and the `Attested Computation` concept type. DCP
+> v0.14 adopts these names natively (SPEC §12): our `source:
+> derived|asserted` + propose-then-approve ritual now EMITS standard signals —
+> a human confirm appends `verified: human:<owner>`. Remaining DCP-only
+> superset: typed relationship predicates (`dcp_relations`), the lint/repair
+> engine, house rules, sync. Attested Computations are on the roadmap (ops
+> phase).
 
 ## Purpose
 

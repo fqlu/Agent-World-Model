@@ -133,6 +133,8 @@ rules:
   - { id: RL-001, severity: error, summary: relationship predicate in vocabulary }
   - { id: RL-002, severity: warn,  summary: relationship target resolves to entity or scope }
   - { id: DC-001, severity: warn,  summary: workstream/project scopes (depth-2) declare a scope_type }
+  - { id: TR-001, severity: warn,  summary: stale_after not breached — re-verify or deprecate (v0.14) }
+  - { id: TR-002, severity: warn,  summary: trust fields well-formed (status vocab, ISO stale_after) (v0.14) }
 
 # Profiles layer org-specific rituals and template overrides onto the core
 # protocol. Template overrides live in spec/templates/profiles/<profile>/ and

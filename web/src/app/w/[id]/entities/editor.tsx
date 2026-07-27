@@ -12,6 +12,13 @@ type Entity = {
   aliases: string[];
   source: "derived" | "asserted";
   confirmed?: string;
+  // Trust signals (OKF v0.2) — carried through save round-trips; the server
+  // stamps generated/verified during the save ritual.
+  generated?: { by: string; at: string };
+  verified?: { by: string; at: string; note?: string }[];
+  sources?: { id?: string; resource: string; title?: string }[];
+  status?: "draft" | "stable" | "deprecated";
+  stale_after?: string;
   attributes: Attr;
   relations: Relation[];
   notes: string;

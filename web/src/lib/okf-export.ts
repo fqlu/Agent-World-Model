@@ -2,12 +2,13 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import YAML from "yaml";
 import { Connector } from "./connector";
-import { parseWorkspaceYaml, allowedForms, declaredAliases } from "./workspace";
+import { parseWorkspaceYaml, allowedForms, declaredAliases, parseFrontmatter } from "./workspace";
 import { listEntities } from "./entities";
 import { buildModel } from "./model-gen";
 
 // OKF export (SPEC §12). Reads the workspace via the connector and writes a
-// conformant OKF bundle to the app's data dir — a generated artifact,
+// conformant OKF v0.2 bundle (trust signals: generated/verified/sources/
+// status/stale_after) to the app's data dir — a generated artifact,
 // regenerated on demand, never written into the user's Drive.
 //
 // v0.14: a workspace can produce MANY named bundles ("the Drive is the
@@ -160,7 +161,14 @@ export async function exportOkfBundle(
       description: firstSentence(e.notes),
       resource: e.attributes.resource ?? e.attributes.url ?? e.attributes.id,
       tags: Object.values(e.attributes).filter(Boolean),
-      timestamp: e.confirmed,
+      // OKF v0.2 trust signals; `timestamp` only as the v0.1 fallback when no
+      // generated stamp exists yet
+      generated: e.generated,
+      timestamp: e.generated ? undefined : e.confirmed,
+      verified: e.verified.length ? e.verified : undefined,
+      sources: e.sources.length ? e.sources : undefined,
+      status: e.status && e.status !== "stable" ? e.status : undefined,
+      stale_after: e.stale_after,
       source: e.source,
       dcp_relations: rels.length ? rels.map((r) => ({ predicate: r.predicate, target: r.target })) : undefined,
     });
@@ -182,11 +190,18 @@ export async function exportOkfBundle(
     // Use the declared scope_type as the OKF concept type when present.
     const st = n.attributes?.scope_type;
     const conceptType = st === "project" ? "Project" : st === "workstream" ? "Workstream" : "Scope";
+    // Pass scope-declared trust fields (OKF v0.2) through to the concept
+    const ovFm = overview ? parseFrontmatter(overview).data : {};
     const fm = frontmatter({
       type: conceptType,
       title: n.label,
       description: overview ? firstSentence(stripFrontmatter(overview)) : "",
       resource: scopePath,
+      generated: ovFm.generated,
+      verified: ovFm.verified,
+      sources: ovFm.sources,
+      status: ovFm.status && ovFm.status !== "stable" ? ovFm.status : undefined,
+      stale_after: ovFm.stale_after,
     });
     const body = overview ? stripFrontmatter(overview) : `# ${n.label}\n`;
     await fs.writeFile(
@@ -243,7 +258,7 @@ export async function exportOkfBundle(
   }
   const bundleTitle =
     filter.kind === "workspace" ? workspaceName : `${workspaceName} — ${opts?.slug ?? filter.ref}`;
-  let index = `---\nokf_version: "0.1"\n---\n\n# ${bundleTitle} — OKF bundle\n\n`;
+  let index = `---\nokf_version: "0.2"\n---\n\n# ${bundleTitle} — OKF bundle\n\n`;
   index += `> Exported from a Drive Context Protocol workspace. ${entityCount + scopeCount + groupCount} concepts.`;
   if (filter.kind !== "workspace") index += ` Slice: ${filter.kind} "${filter.ref}".`;
   index += `\n\n`;

@@ -8,6 +8,14 @@ export type EntitySource = "derived" | "asserted";
 
 export type Relation = { predicate: string; target: string; note?: string };
 
+// ---- Trust signals (OKF v0.2 alignment, SPEC §12) ----
+// Actor convention: "human:<id>" | "<producer>/<version>" | "process:<id>"
+export type Generated = { by: string; at: string };
+export type VerifiedEvent = { by: string; at: string; note?: string };
+export type SourceRef = { id?: string; resource: string; title?: string };
+export type EntityStatus = "draft" | "stable" | "deprecated";
+export const ENTITY_STATUSES: EntityStatus[] = ["draft", "stable", "deprecated"];
+
 export type Entity = {
   slug: string;
   name: string;
@@ -15,10 +23,24 @@ export type Entity = {
   aliases: string[];
   source: EntitySource;
   confirmed?: string;
+  // Trust (all optional; status defaults to "stable" per OKF)
+  generated?: Generated;
+  verified: VerifiedEvent[];
+  sources: SourceRef[];
+  status?: EntityStatus;
+  stale_after?: string; // YYYY-MM-DD
   attributes: Record<string, string>;
   relations: Relation[];
   notes: string;
 };
+
+// Trust tier derived from the signals (OKF v0.2): human-reviewed beats
+// machine-confirmed beats unverified.
+export function trustTier(e: Entity): "human-reviewed" | "machine-confirmed" | "unverified" {
+  if (e.verified.some((v) => v.by.startsWith("human:"))) return "human-reviewed";
+  if (e.verified.length) return "machine-confirmed";
+  return "unverified";
+}
 
 export const DEFAULT_ENTITIES_MOUNT = "_Entities";
 const KINDS: EntityKind[] = ["person", "system", "concept"];
@@ -69,6 +91,34 @@ export function parseEntityFile(md: string): Entity | null {
       }
     }
   }
+  // Trust fields — tolerant parsing; malformed entries are dropped, not fatal
+  const gen = d.generated as Record<string, unknown> | undefined;
+  const generated =
+    gen && typeof gen === "object" && typeof gen.by === "string" && typeof gen.at === "string"
+      ? { by: gen.by, at: gen.at }
+      : undefined;
+  const verified: VerifiedEvent[] = [];
+  if (Array.isArray(d.verified)) {
+    for (const v of d.verified) {
+      if (v && typeof v === "object" && typeof (v as VerifiedEvent).by === "string" && typeof (v as VerifiedEvent).at === "string") {
+        const vv = v as { by: string; at: string; note?: unknown };
+        verified.push({ by: vv.by, at: vv.at, note: typeof vv.note === "string" ? vv.note : undefined });
+      }
+    }
+  }
+  const sources: SourceRef[] = [];
+  if (Array.isArray(d.sources)) {
+    for (const s of d.sources) {
+      if (s && typeof s === "object" && typeof (s as SourceRef).resource === "string") {
+        const ss = s as { id?: unknown; resource: string; title?: unknown };
+        sources.push({
+          id: typeof ss.id === "string" ? ss.id : undefined,
+          resource: ss.resource,
+          title: typeof ss.title === "string" ? ss.title : undefined,
+        });
+      }
+    }
+  }
   return {
     slug: slugify(d.name),
     name: d.name,
@@ -76,6 +126,11 @@ export function parseEntityFile(md: string): Entity | null {
     aliases: Array.isArray(d.aliases) ? d.aliases.map(String) : [],
     source: d.source === "derived" ? "derived" : "asserted",
     confirmed: typeof d.confirmed === "string" ? d.confirmed : undefined,
+    generated,
+    verified,
+    sources,
+    status: ENTITY_STATUSES.includes(d.status as EntityStatus) ? (d.status as EntityStatus) : undefined,
+    stale_after: typeof d.stale_after === "string" ? d.stale_after : undefined,
     attributes: attrs,
     relations,
     notes: m[2].trim(),
@@ -91,6 +146,21 @@ export function serializeEntity(e: Entity): string {
     source: e.source,
   };
   if (e.confirmed) front.confirmed = e.confirmed;
+  // Trust signals (OKF v0.2 names, emitted only when present)
+  if (e.generated) front.generated = e.generated;
+  if (e.verified.length) {
+    front.verified = e.verified.map((v) => (v.note ? v : { by: v.by, at: v.at }));
+  }
+  if (e.sources.length) {
+    front.sources = e.sources.map((s) => {
+      const out: Record<string, string> = { resource: s.resource };
+      if (s.id) out.id = s.id;
+      if (s.title) out.title = s.title;
+      return out;
+    });
+  }
+  if (e.status && e.status !== "stable") front.status = e.status; // stable is the OKF default
+  if (e.stale_after) front.stale_after = e.stale_after;
   front.attributes = e.attributes;
   if (e.relations.length) {
     front.relations = e.relations.map((r) =>
@@ -140,6 +210,31 @@ export async function saveEntities(
 ): Promise<{ written: string[]; archived: string[] }> {
   const mount = (await entitiesMount(c)) ?? DEFAULT_ENTITIES_MOUNT;
   await c.mkdir(mount);
+
+  // ---- Trust stamping (OKF v0.2, SPEC §12) ----
+  // The save ritual is the trust event: new files get a `generated` stamp;
+  // a derived→asserted transition (the human Confirm) appends a
+  // `verified: human:<owner>` event. Deterministic — never fabricates who
+  // verified: only the workspace owner's explicit confirm produces one.
+  const today = new Date().toISOString().slice(0, 10);
+  const preDecl = await readDecl(c);
+  const ownerId = preDecl?.owner?.email ? `human:${preDecl.owner.email}` : "human:owner";
+  const producer = `${process.env.HUB_APP_NAME?.toLowerCase().replace(/\s+/g, "-") ?? "agent-world-model"}/api`;
+  const { entities: existing } = await listEntities(c);
+  const existingBySlug = new Map(existing.map((e) => [e.slug, e]));
+  for (const e of entities) {
+    const prev = existingBySlug.get(e.slug || slugify(e.name));
+    if (!e.generated) {
+      // preserve the prior stamp on updates; stamp fresh only for new files
+      e.generated = prev?.generated ?? { by: producer, at: today };
+    }
+    const confirmedNow =
+      e.source === "asserted" && (!prev || prev.source === "derived");
+    const alreadyStamped = e.verified.some((v) => v.by === ownerId && v.at === today);
+    if (confirmedNow && !alreadyStamped && prev) {
+      e.verified = [...e.verified, { by: ownerId, at: today, note: "confirmed derived → asserted" }];
+    }
+  }
 
   // register mount if missing
   const raw = await c.read("_Workspace.yaml");

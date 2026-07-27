@@ -250,9 +250,11 @@ export async function runAudit(c: Connector, profileName = "incubeta"): Promise<
       (e) => e.kind === "file" && e.name.endsWith(".md"),
     );
     const parsed = new Map<string, ReturnType<typeof parseEntityFile>>();
+    const raws = new Map<string, string>();
     const slugs = new Set<string>();
     for (const e of entityFiles) {
       const md = await c.read(e.path);
+      if (md !== null) raws.set(e.path, md);
       const ent = md !== null ? parseEntityFile(md) : null;
       parsed.set(e.path, ent);
       if (ent) slugs.add(ent.slug);
@@ -277,12 +279,33 @@ export async function runAudit(c: Connector, profileName = "incubeta"): Promise<
           add("RL-002", e.path, `Relationship target "${r.target}" resolves to neither an entity nor a scope`);
         }
       }
+      const raw = raws.get(e.path);
+      if (raw) checkTrustFields(e.path, parseFrontmatter(raw).data);
     }
   }
 
   return { findings, stats, decl };
 
   // ---------- helpers ----------
+
+  // Trust hygiene (OKF v0.2 alignment, SPEC §12) — applies to entity files and
+  // promoted-scope overviews. Purely advisory: warns, never blocks.
+  function checkTrustFields(p: string, fm: Record<string, unknown>) {
+    const today = new Date().toISOString().slice(0, 10);
+    const status = fm.status;
+    if (status !== undefined && !["draft", "stable", "deprecated"].includes(String(status))) {
+      add("TR-002", p, `status "${String(status)}" not one of draft/stable/deprecated`);
+    }
+    const stale = fm.stale_after;
+    if (stale !== undefined) {
+      const s = String(stale);
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) {
+        add("TR-002", p, `stale_after "${s}" is not an ISO date (YYYY-MM-DD)`);
+      } else if (s < today && String(status ?? "stable") !== "deprecated") {
+        add("TR-001", p, `Stale since ${s} — re-verify or deprecate`);
+      }
+    }
+  }
 
   // Walk every folder; lint only entities, promoted scopes, and collections.
   // Content folders pass through silently (but may contain context dirs and
@@ -337,6 +360,9 @@ export async function runAudit(c: Connector, profileName = "incubeta"): Promise<
           if (!st || !allowed.includes(st)) {
             add("DC-001", child.path, st ? `scope_type "${st}" not one of ${allowed.join(", ")}` : `Scope is missing a scope_type (${allowed.join("/")}) — see §3.1`);
           }
+        }
+        if (scopeOverviewMd !== null) {
+          checkTrustFields(`${child.path}/${manifest.scopes.context_file}`, parseFrontmatter(scopeOverviewMd).data);
         }
       }
 
