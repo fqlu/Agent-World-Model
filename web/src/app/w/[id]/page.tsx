@@ -43,6 +43,24 @@ export default async function WorkspacePage({ params }: { params: Promise<{ id: 
       </div>
 
       <SyncPanel wsId={ws.id} />
+
+      <Link
+        href={`/w/${ws.id}/review`}
+        className="card flex items-center gap-3 border-indigo-200 p-4 transition hover:border-indigo-400"
+      >
+        <span className="flex h-8 w-8 items-center justify-center rounded-full bg-indigo-600 text-sm font-bold text-white">
+          ✓
+        </span>
+        <span>
+          <span className="font-semibold text-zinc-900">Review changes</span>
+          <span className="block text-xs text-zinc-500">
+            See what any agent changed since you last looked — bless it (stamps{" "}
+            <code className="font-mono">verified</code>) or flag it for the next agent to fix.
+          </span>
+        </span>
+        <span className="ml-auto text-indigo-600">→</span>
+      </Link>
+
       <BundlesPanel wsId={ws.id} />
 
       <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">

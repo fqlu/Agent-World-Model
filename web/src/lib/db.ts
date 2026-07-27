@@ -56,6 +56,12 @@ CREATE TABLE IF NOT EXISTS sync_state (
   manifest TEXT NOT NULL,
   synced_at TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS review_state (
+  workspace_id INTEGER PRIMARY KEY REFERENCES workspaces(id),
+  manifest TEXT NOT NULL,
+  flags TEXT NOT NULL DEFAULT '[]',
+  reviewed_at TEXT NOT NULL
+);
 CREATE TABLE IF NOT EXISTS bundles (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   workspace_id INTEGER NOT NULL REFERENCES workspaces(id),
@@ -185,6 +191,7 @@ export const q = {
     db.prepare("DELETE FROM audits WHERE workspace_id = ?").run(id);
     db.prepare("DELETE FROM proposals WHERE workspace_id = ?").run(id);
     db.prepare("DELETE FROM sync_state WHERE workspace_id = ?").run(id);
+    db.prepare("DELETE FROM review_state WHERE workspace_id = ?").run(id);
     db.prepare("DELETE FROM bundles WHERE workspace_id = ?").run(id);
     db.prepare("DELETE FROM workspaces WHERE id = ?").run(id);
   },
@@ -221,6 +228,19 @@ export const q = {
       .prepare("UPDATE bundles SET stats = ?, updated_at = datetime('now') WHERE id = ?")
       .run(JSON.stringify(stats), id),
   deleteBundle: (id: number) => getDb().prepare("DELETE FROM bundles WHERE id = ?").run(id),
+
+  // ---- Review loop (Phase 2) — the last-REVIEWED snapshot, separate from
+  // sync_state (last time projections were refreshed) ----
+  getReviewState: (workspaceId: number) =>
+    getDb()
+      .prepare("SELECT manifest, flags, reviewed_at FROM review_state WHERE workspace_id = ?")
+      .get(workspaceId) as { manifest: string; flags: string; reviewed_at: string } | undefined,
+  saveReviewState: (workspaceId: number, manifest: unknown, flags: unknown) =>
+    getDb()
+      .prepare(
+        "INSERT INTO review_state (workspace_id, manifest, flags, reviewed_at) VALUES (?,?,?,datetime('now')) ON CONFLICT(workspace_id) DO UPDATE SET manifest = excluded.manifest, flags = excluded.flags, reviewed_at = excluded.reviewed_at",
+      )
+      .run(workspaceId, JSON.stringify(manifest), JSON.stringify(flags)),
 
   getSyncState: (workspaceId: number) =>
     getDb().prepare("SELECT manifest, synced_at FROM sync_state WHERE workspace_id = ?").get(workspaceId) as

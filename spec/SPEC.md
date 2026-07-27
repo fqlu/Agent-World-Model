@@ -459,6 +459,24 @@ The maintenance loop keeps state current:
 This separation — deterministic detection + agent-driven reflection — keeps
 the core dependency-free and every model change human-reviewable.
 
+**The review-and-verify loop (v0.14).** Writes are never gated: any agent, in
+any tool, MAY write files directly at any time — the protocol's contract is
+reconciliation-after-write (the git model), not transactions. Tooling keeps a
+second manifest, the **last-reviewed snapshot**, separate from the sync
+snapshot. When the owner reviews, the diff since their last review is shown
+with each file **linted at review time**. Two verdicts per file:
+
+- **Bless** — marks it reviewed; on entity files and scope overviews this
+  appends a `verified: human:<owner>` event (§12), turning the owner's review
+  into durable trust metadata. The tool's own bookkeeping (its journal
+  attribution line) folds into the baseline so it never re-queues itself.
+- **Flag** — records a problem (path + note) and emits it as a fix-up task
+  scaffold for the next agent session, through the normal conventions.
+
+Unreviewed agent output is not an error state: it simply sits in a lower
+trust tier (unverified) until reviewed — visible as such in the model and in
+every exported bundle. Drift never corrupts; it queues.
+
 ## 7. Memory
 
 The workspace gives agents three memory surfaces, from coarse to fine:
