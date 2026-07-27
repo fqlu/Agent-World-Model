@@ -272,6 +272,126 @@ export async function exportOkfSvc(wsId: number) {
   return result;
 }
 
+// ---- Bundles ---------------------------------------------------------------
+// A bundle is a named, generated OKF projection of the workspace (or a slice
+// of it). Rows in the DB + directories in the app data dir only — the Drive
+// is never written. "The Drive is the workshop; the bundle is the product."
+
+export type BundleView = {
+  id: number;
+  name: string;
+  slug: string;
+  scopeKind: "workspace" | "scope" | "group";
+  scopeRef: string | null;
+  path: string;
+  stats: { concepts: number; entities: number; scopes: number; groups: number } | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+function bundleView(r: import("./db").BundleRow): BundleView {
+  return {
+    id: r.id,
+    name: r.name,
+    slug: r.slug,
+    scopeKind: r.scope_kind,
+    scopeRef: r.scope_ref,
+    path: r.path,
+    stats: r.stats ? JSON.parse(r.stats) : null,
+    createdAt: r.created_at,
+    updatedAt: r.updated_at,
+  };
+}
+
+export async function listBundlesSvc(wsId: number): Promise<BundleView[]> {
+  return q.listBundles(wsId).map(bundleView);
+}
+
+// Options for the create form: client-level scopes (depth-1 in each area) and
+// root-level context groups.
+export async function bundleOptionsSvc(
+  wsId: number,
+): Promise<{ scopes: string[]; groups: { slug: string; title: string }[] }> {
+  const ws = q.getWorkspace(wsId);
+  if (!ws) throw new Error(`Workspace ${wsId} not found`);
+  const c = connectorFor(ws);
+  const declRaw = await c.read("_Workspace.yaml");
+  const decl = declRaw ? parseWorkspaceYaml(declRaw) : null;
+  const scopes: string[] = [];
+  for (const area of decl?.mounts?.areas ?? []) {
+    if (!(await c.exists(area))) continue;
+    for (const e of await c.list(area)) {
+      if (e.kind === "folder" && !e.name.startsWith("_") && !e.name.includes("|")) scopes.push(e.path);
+    }
+  }
+  const { listGroups } = await import("./context");
+  const { groups } = await listGroups(c, "");
+  return { scopes, groups: groups.map((g) => ({ slug: g.slug, title: g.title })) };
+}
+
+export async function createBundleSvc(
+  wsId: number,
+  name: string,
+  scopeKind: "workspace" | "scope" | "group",
+  scopeRef?: string | null,
+): Promise<BundleView> {
+  const ws = q.getWorkspace(wsId);
+  if (!ws) throw new Error(`Workspace ${wsId} not found`);
+  if (!name.trim()) throw new Error("Bundle needs a name");
+  if (scopeKind !== "workspace" && !scopeRef) throw new Error(`A ${scopeKind} bundle needs a ${scopeKind} reference`);
+  const { exportOkfBundle, bundleSlugify } = await import("./okf-export");
+  const slug = bundleSlugify(name);
+  if (q.getBundleBySlug(wsId, slug)) throw new Error(`A bundle named "${name}" (slug ${slug}) already exists`);
+  const c = connectorFor(ws);
+  const filter =
+    scopeKind === "workspace" ? ({ kind: "workspace" } as const) : ({ kind: scopeKind, ref: scopeRef! } as const);
+  const result = await exportOkfBundle(c, ws.id, ws.name, { slug, filter });
+  const id = q.createBundle({
+    workspace_id: wsId,
+    name: name.trim(),
+    slug,
+    scope_kind: scopeKind,
+    scope_ref: scopeRef ?? null,
+    path: result.path,
+  });
+  q.touchBundle(id, { concepts: result.concepts, entities: result.entities, scopes: result.scopes, groups: result.groups });
+  try {
+    const declRaw = await c.read("_Workspace.yaml");
+    const journal = (declRaw ? parseWorkspaceYaml(declRaw) : null)?.mounts?.journal ?? "Journal";
+    await journalAgentActivity(c, journal, `built OKF bundle "${name.trim()}" — ${result.concepts} concept(s)`);
+  } catch {
+    /* journal best-effort */
+  }
+  return bundleView(q.getBundle(id)!);
+}
+
+export async function refreshBundleSvc(wsId: number, bundleId: number): Promise<BundleView> {
+  const ws = q.getWorkspace(wsId);
+  if (!ws) throw new Error(`Workspace ${wsId} not found`);
+  const b = q.getBundle(bundleId);
+  if (!b || b.workspace_id !== wsId) throw new Error(`Bundle ${bundleId} not found in workspace ${wsId}`);
+  const { exportOkfBundle } = await import("./okf-export");
+  const c = connectorFor(ws);
+  const filter =
+    b.scope_kind === "workspace"
+      ? ({ kind: "workspace" } as const)
+      : ({ kind: b.scope_kind, ref: b.scope_ref! } as const);
+  const result = await exportOkfBundle(c, ws.id, ws.name, { slug: b.slug, filter });
+  q.touchBundle(b.id, { concepts: result.concepts, entities: result.entities, scopes: result.scopes, groups: result.groups });
+  return bundleView(q.getBundle(b.id)!);
+}
+
+// Deletes the bundle row + its generated directory in app scratch space.
+// Never touches the workspace's files.
+export async function deleteBundleSvc(wsId: number, bundleId: number): Promise<{ removed: string }> {
+  const b = q.getBundle(bundleId);
+  if (!b || b.workspace_id !== wsId) throw new Error(`Bundle ${bundleId} not found in workspace ${wsId}`);
+  const { removeBundleDir } = await import("./okf-export");
+  await removeBundleDir(wsId, b.slug);
+  q.deleteBundle(b.id);
+  return { removed: b.name };
+}
+
 export async function regenerateIndexSvc(wsId: number): Promise<boolean> {
   const ws = q.getWorkspace(wsId);
   if (!ws) throw new Error(`Workspace ${wsId} not found`);

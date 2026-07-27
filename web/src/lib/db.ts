@@ -56,6 +56,19 @@ CREATE TABLE IF NOT EXISTS sync_state (
   manifest TEXT NOT NULL,
   synced_at TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS bundles (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  workspace_id INTEGER NOT NULL REFERENCES workspaces(id),
+  name TEXT NOT NULL,
+  slug TEXT NOT NULL,
+  scope_kind TEXT NOT NULL DEFAULT 'workspace' CHECK (scope_kind IN ('workspace','scope','group')),
+  scope_ref TEXT,
+  path TEXT NOT NULL,
+  stats TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+  UNIQUE(workspace_id, slug)
+);
 `;
 
 export type WorkspaceRow = {
@@ -74,6 +87,19 @@ export type AuditRow = {
   created_at: string;
   findings: string;
   stats: string;
+};
+
+export type BundleRow = {
+  id: number;
+  workspace_id: number;
+  name: string;
+  slug: string;
+  scope_kind: "workspace" | "scope" | "group";
+  scope_ref: string | null;
+  path: string;
+  stats: string | null;
+  created_at: string;
+  updated_at: string;
 };
 
 export type ProposalRow = {
@@ -153,14 +179,48 @@ export const q = {
     ),
 
   // Removes only the app's record of a workspace (row + its audits/proposals/
-  // sync state). NEVER touches the workspace's files on disk/Drive.
+  // sync state/bundles). NEVER touches the workspace's files on disk/Drive.
   deleteWorkspace: (id: number) => {
     const db = getDb();
     db.prepare("DELETE FROM audits WHERE workspace_id = ?").run(id);
     db.prepare("DELETE FROM proposals WHERE workspace_id = ?").run(id);
     db.prepare("DELETE FROM sync_state WHERE workspace_id = ?").run(id);
+    db.prepare("DELETE FROM bundles WHERE workspace_id = ?").run(id);
     db.prepare("DELETE FROM workspaces WHERE id = ?").run(id);
   },
+
+  // ---- Bundles (generated OKF projections; rows track generated artifacts only) ----
+  listBundles: (workspaceId: number) =>
+    getDb()
+      .prepare("SELECT * FROM bundles WHERE workspace_id = ? ORDER BY id DESC")
+      .all(workspaceId) as BundleRow[],
+  getBundle: (id: number) =>
+    getDb().prepare("SELECT * FROM bundles WHERE id = ?").get(id) as BundleRow | undefined,
+  getBundleBySlug: (workspaceId: number, slug: string) =>
+    getDb()
+      .prepare("SELECT * FROM bundles WHERE workspace_id = ? AND slug = ?")
+      .get(workspaceId, slug) as BundleRow | undefined,
+  createBundle: (b: {
+    workspace_id: number;
+    name: string;
+    slug: string;
+    scope_kind: string;
+    scope_ref?: string | null;
+    path: string;
+  }) =>
+    Number(
+      getDb()
+        .prepare(
+          "INSERT INTO bundles (workspace_id, name, slug, scope_kind, scope_ref, path) VALUES (?,?,?,?,?,?)",
+        )
+        .run(b.workspace_id, b.name, b.slug, b.scope_kind, b.scope_ref ?? null, b.path)
+        .lastInsertRowid,
+    ),
+  touchBundle: (id: number, stats: unknown) =>
+    getDb()
+      .prepare("UPDATE bundles SET stats = ?, updated_at = datetime('now') WHERE id = ?")
+      .run(JSON.stringify(stats), id),
+  deleteBundle: (id: number) => getDb().prepare("DELETE FROM bundles WHERE id = ?").run(id),
 
   getSyncState: (workspaceId: number) =>
     getDb().prepare("SELECT manifest, synced_at FROM sync_state WHERE workspace_id = ?").get(workspaceId) as

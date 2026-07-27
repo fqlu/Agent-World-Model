@@ -2,15 +2,25 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import YAML from "yaml";
 import { Connector } from "./connector";
-import { parseWorkspaceYaml } from "./workspace";
+import { parseWorkspaceYaml, allowedForms, declaredAliases } from "./workspace";
 import { listEntities } from "./entities";
 import { buildModel } from "./model-gen";
 
 // OKF export (SPEC §12). Reads the workspace via the connector and writes a
-// conformant OKF v0.1 bundle to the app's data dir — a generated artifact,
+// conformant OKF bundle to the app's data dir — a generated artifact,
 // regenerated on demand, never written into the user's Drive.
+//
+// v0.14: a workspace can produce MANY named bundles ("the Drive is the
+// workshop; the bundle is the product"). A bundle is either the whole
+// workspace or a slice — one client scope's subtree, or one context group's
+// members — with entities/groups/log filtered to match.
 
 const DATA_DIR = process.env.HUB_DATA_DIR ?? path.join(process.cwd(), "data");
+
+export type BundleFilter =
+  | { kind: "workspace" }
+  | { kind: "scope"; ref: string } // ref = scope path, e.g. "Clients/Medibank"
+  | { kind: "group"; ref: string }; // ref = group slug, e.g. "offline-conversions"
 
 function slug(s: string): string {
   return s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 80) || "x";
@@ -35,7 +45,12 @@ function firstSentence(md: string): string {
 
 export type OkfResult = { path: string; concepts: number; entities: number; scopes: number; groups: number };
 
-export async function exportOkfBundle(c: Connector, workspaceId: number, workspaceName: string): Promise<OkfResult> {
+export async function exportOkfBundle(
+  c: Connector,
+  workspaceId: number,
+  workspaceName: string,
+  opts?: { slug?: string; filter?: BundleFilter },
+): Promise<OkfResult> {
   const declRaw = await c.read("_Workspace.yaml");
   const decl = declRaw ? parseWorkspaceYaml(declRaw) : null;
   const model = await buildModel(c);
@@ -43,20 +58,74 @@ export async function exportOkfBundle(c: Connector, workspaceId: number, workspa
 
   const { entities } = await listEntities(c);
   const entityBySlug = new Map(entities.map((e) => [e.slug, e]));
+  const filter: BundleFilter = opts?.filter ?? { kind: "workspace" };
 
-  const outDir = path.join(DATA_DIR, "okf", String(workspaceId));
+  // ---- Inclusion sets ------------------------------------------------------
+  // includedScopePaths: scope paths in the slice. null = everything included.
+  let includedScopePaths: Set<string> | null = null;
+  let includedGroupIds: Set<string> | null = null;
+
+  const scopeNodes = model.nodes.filter((n) => n.id.startsWith("scope:"));
+  const groupNodes = model.nodes.filter((n) => n.id.startsWith("group:"));
+
+  if (filter.kind === "scope") {
+    const root = filter.ref.replace(/\/+$/, "");
+    if (!(await c.exists(root))) throw new Error(`Bundle scope "${root}" does not exist`);
+    includedScopePaths = new Set(
+      scopeNodes.map((n) => n.id.slice(6)).filter((p) => p === root || p.startsWith(root + "/")),
+    );
+    // groups with at least one included member; membership edges are scope→group
+    includedGroupIds = new Set(
+      model.edges
+        .filter((e) => e.predicate === "in-group" && includedScopePaths!.has(e.from.slice(6)))
+        .map((e) => e.to),
+    );
+  } else if (filter.kind === "group") {
+    const gnode = groupNodes.find(
+      (n) => n.id === `group:${filter.ref}` || n.id.endsWith(`/${filter.ref}`) || slug(n.label) === filter.ref,
+    );
+    if (!gnode) throw new Error(`Bundle group "${filter.ref}" not found`);
+    includedGroupIds = new Set([gnode.id]);
+    const memberPaths = model.edges
+      .filter((e) => e.predicate === "in-group" && e.to === gnode.id)
+      .map((e) => e.from.slice(6));
+    includedScopePaths = new Set(
+      scopeNodes
+        .map((n) => n.id.slice(6))
+        .filter((p) => memberPaths.some((m) => p === m || p.startsWith(m + "/"))),
+    );
+  }
+
+  const scopeIncluded = (p: string) => includedScopePaths === null || includedScopePaths.has(p);
+  const groupIncluded = (id: string) => includedGroupIds === null || includedGroupIds.has(id);
+  const entityIncluded = (eSlug: string): boolean => {
+    if (includedScopePaths === null) return true;
+    const e = entityBySlug.get(eSlug);
+    if (!e) return false;
+    return e.relations.some(
+      (r) => scopeIncluded(r.target) || (entityBySlug.has(r.target) && entityDirectlyIncluded(r.target)),
+    );
+  };
+  // direct scope relation only (used to avoid chasing entity→entity chains forever)
+  const entityDirectlyIncluded = (eSlug: string): boolean => {
+    const e = entityBySlug.get(eSlug);
+    return !!e && e.relations.some((r) => scopeIncluded(r.target));
+  };
+
+  const bundleSlug = opts?.slug ?? "_workspace";
+  const outDir = path.join(DATA_DIR, "okf", String(workspaceId), bundleSlug);
   // Clean rebuild — this is app scratch space, safe to remove.
   await fs.rm(outDir, { recursive: true, force: true });
   await fs.mkdir(path.join(outDir, "entities"), { recursive: true });
   await fs.mkdir(path.join(outDir, "scopes"), { recursive: true });
   await fs.mkdir(path.join(outDir, "groups"), { recursive: true });
 
-  // id -> bundle-relative href, for rendering relationship links
+  // id -> bundle-relative href, for rendering relationship links (included only)
   const href = new Map<string, string>();
   for (const n of model.nodes) {
-    if (n.id.startsWith("entity:")) href.set(n.id, `/entities/${slug(n.id.slice(7))}.md`);
-    else if (n.id.startsWith("group:")) href.set(n.id, `/groups/${slug(n.label)}.md`);
-    else if (n.id.startsWith("scope:")) href.set(n.id, `/scopes/${slug(n.id.slice(6))}.md`);
+    if (n.id.startsWith("entity:") && entityIncluded(n.id.slice(7))) href.set(n.id, `/entities/${slug(n.id.slice(7))}.md`);
+    else if (n.id.startsWith("group:") && groupIncluded(n.id)) href.set(n.id, `/groups/${slug(n.label)}.md`);
+    else if (n.id.startsWith("scope:") && scopeIncluded(n.id.slice(6))) href.set(n.id, `/scopes/${slug(n.id.slice(6))}.md`);
   }
   const edgesFrom = (id: string) => model.edges.filter((e) => e.from === id);
 
@@ -67,14 +136,23 @@ export async function exportOkfBundle(c: Connector, workspaceId: number, workspa
 
   // ---- Entity concepts ----
   for (const e of entities) {
+    if (!entityIncluded(e.slug)) continue;
     const rels = e.relations.map((r) => {
       const targetId = entityBySlug.has(r.target) ? `entity:${r.target}` : `scope:${r.target}`;
-      const link = href.get(targetId) ?? r.target;
-      return { predicate: r.predicate, target: r.target, href: link, note: r.note };
+      return { predicate: r.predicate, target: r.target, href: href.get(targetId), note: r.note };
     });
     const body = [
       e.notes.trim(),
-      rels.length ? "\n## Relationships\n" + rels.map((r) => `- ${r.predicate} → [${r.target}](${r.href})${r.note ? ` — ${r.note}` : ""}`).join("\n") : "",
+      rels.length
+        ? "\n## Relationships\n" +
+          rels
+            .map((r) =>
+              r.href
+                ? `- ${r.predicate} → [${r.target}](${r.href})${r.note ? ` — ${r.note}` : ""}`
+                : `- ${r.predicate} → ${r.target}${r.note ? ` — ${r.note}` : ""}`,
+            )
+            .join("\n")
+        : "",
     ].filter(Boolean).join("\n");
     const fm = frontmatter({
       type: e.kind,
@@ -92,12 +170,14 @@ export async function exportOkfBundle(c: Connector, workspaceId: number, workspa
   }
 
   // ---- Scope concepts (one per overview) ----
-  for (const n of model.nodes.filter((x) => x.kind === "scope" && x.id.startsWith("scope:"))) {
+  for (const n of scopeNodes) {
     const scopePath = n.id.slice(6);
+    if (!scopeIncluded(scopePath)) continue;
     const overview = await c.read(`${scopePath}/_Overview.md`);
     const s = slug(scopePath);
     const links = edgesFrom(n.id)
-      .map((e) => `- ${e.predicate} → [${e.to.replace(/^.*:/, "")}](${href.get(e.to) ?? e.to})`)
+      .filter((e) => href.has(e.to))
+      .map((e) => `- ${e.predicate} → [${e.to.replace(/^.*:/, "")}](${href.get(e.to)})`)
       .join("\n");
     // Use the declared scope_type as the OKF concept type when present.
     const st = n.attributes?.scope_type;
@@ -118,10 +198,11 @@ export async function exportOkfBundle(c: Connector, workspaceId: number, workspa
   }
 
   // ---- Group concepts ----
-  for (const n of model.nodes.filter((x) => x.id.startsWith("group:"))) {
+  for (const n of groupNodes) {
+    if (!groupIncluded(n.id)) continue;
     const members = model.edges
-      .filter((e) => e.to === n.id)
-      .map((e) => `- [${e.from.replace(/^.*:/, "")}](${href.get(e.from) ?? e.from})${e.note ? ` — ${e.note}` : ""}`)
+      .filter((e) => e.to === n.id && href.has(e.from))
+      .map((e) => `- [${e.from.replace(/^.*:/, "")}](${href.get(e.from)})${e.note ? ` — ${e.note}` : ""}`)
       .join("\n");
     const fm = frontmatter({ type: "Group", title: n.label });
     await fs.writeFile(
@@ -142,7 +223,17 @@ export async function exportOkfBundle(c: Connector, workspaceId: number, workspa
   }
 
   // ---- log.md from the journal (date-grouped, newest first) ----
-  await writeLog(c, decl?.mounts?.journal ?? "Journal", outDir);
+  // Scope slices keep only the journal sections about this slice.
+  let sectionNames: string[] | null = null;
+  if (filter.kind === "scope") {
+    const base = filter.ref.split("/").pop() ?? filter.ref;
+    const forms = allowedForms(base);
+    for (const a of declaredAliases(await c.read(`${filter.ref}/_Overview.md`))) forms.add(a);
+    sectionNames = [...forms];
+  } else if (filter.kind === "group") {
+    sectionNames = null; // group slices keep the full log for now (cross-client by nature)
+  }
+  await writeLog(c, decl?.mounts?.journal ?? "Journal", outDir, sectionNames);
 
   // ---- root index.md (reserved; only place okf_version lives) ----
   const sections = new Map<string, string[]>();
@@ -150,8 +241,12 @@ export async function exportOkfBundle(c: Connector, workspaceId: number, workspa
     if (!sections.has(e.section)) sections.set(e.section, []);
     sections.get(e.section)!.push(`- ${e.line}`);
   }
-  let index = `---\nokf_version: "0.1"\n---\n\n# ${workspaceName} — OKF bundle\n\n`;
-  index += `> Exported from a Drive Context Protocol workspace. ${entityCount + scopeCount + groupCount} concepts.\n\n`;
+  const bundleTitle =
+    filter.kind === "workspace" ? workspaceName : `${workspaceName} — ${opts?.slug ?? filter.ref}`;
+  let index = `---\nokf_version: "0.1"\n---\n\n# ${bundleTitle} — OKF bundle\n\n`;
+  index += `> Exported from a Drive Context Protocol workspace. ${entityCount + scopeCount + groupCount} concepts.`;
+  if (filter.kind !== "workspace") index += ` Slice: ${filter.kind} "${filter.ref}".`;
+  index += `\n\n`;
   for (const [section, lines] of sections) index += `## ${section}\n${lines.join("\n")}\n\n`;
   await fs.writeFile(path.join(outDir, "index.md"), index);
 
@@ -163,7 +258,33 @@ function stripFrontmatter(md: string): string {
   return (m ? m[1] : md).trim();
 }
 
-async function writeLog(c: Connector, journalMount: string, outDir: string): Promise<void> {
+// Keep only "## <heading>" sections whose heading mentions one of `names`
+// (used to slice the cross-client journal down to one client's lines).
+function filterSections(body: string, names: string[]): string {
+  const lines = body.split("\n");
+  const out: string[] = [];
+  let keeping = false;
+  let sawSection = false;
+  for (const line of lines) {
+    if (line.startsWith("## ")) {
+      sawSection = true;
+      const h = line.slice(3).trim();
+      keeping = names.some((n) => h.toLowerCase().includes(n.toLowerCase()));
+      if (keeping) out.push(line);
+      continue;
+    }
+    if (!sawSection) continue; // preamble (title/blockquote) — skip in slices
+    if (keeping) out.push(line);
+  }
+  return out.join("\n").trim();
+}
+
+async function writeLog(
+  c: Connector,
+  journalMount: string,
+  outDir: string,
+  sectionNames: string[] | null,
+): Promise<void> {
   const days: { date: string; body: string }[] = [];
   async function walk(p: string) {
     let entries;
@@ -176,7 +297,13 @@ async function writeLog(c: Connector, journalMount: string, outDir: string): Pro
       if (e.kind === "folder") await walk(e.path);
       else if (/^\d{4}-\d{2}-\d{2}\.md$/.test(e.name)) {
         const md = await c.read(e.path);
-        if (md) days.push({ date: e.name.replace(/\.md$/, ""), body: stripFrontmatter(md) });
+        if (md === null) continue;
+        let body = stripFrontmatter(md);
+        if (sectionNames) {
+          body = filterSections(body, sectionNames);
+          if (!body) continue; // day says nothing about this slice
+        }
+        days.push({ date: e.name.replace(/\.md$/, ""), body });
       }
     }
   }
@@ -184,4 +311,14 @@ async function writeLog(c: Connector, journalMount: string, outDir: string): Pro
   days.sort((a, b) => b.date.localeCompare(a.date)); // newest first
   const log = "# Log\n\n" + days.map((d) => `## ${d.date}\n\n${d.body}\n`).join("\n");
   await fs.writeFile(path.join(outDir, "log.md"), log);
+}
+
+export async function removeBundleDir(workspaceId: number, bundleSlug: string): Promise<void> {
+  // Only ever deletes inside the app's own data dir — never the Drive.
+  const dir = path.join(DATA_DIR, "okf", String(workspaceId), bundleSlug);
+  await fs.rm(dir, { recursive: true, force: true });
+}
+
+export function bundleSlugify(name: string): string {
+  return slug(name);
 }

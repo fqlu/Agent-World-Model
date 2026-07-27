@@ -10,7 +10,7 @@ import {
 import type { AuditStats } from "@/lib/linter";
 import SyncPanel from "./sync-panel";
 import RemoveWorkspace from "./remove-workspace";
-import OkfButton from "./okf-button";
+import BundlesPanel from "./bundles-panel";
 
 export const dynamic = "force-dynamic";
 
@@ -43,7 +43,7 @@ export default async function WorkspacePage({ params }: { params: Promise<{ id: 
       </div>
 
       <SyncPanel wsId={ws.id} />
-      <OkfButton wsId={ws.id} />
+      <BundlesPanel wsId={ws.id} />
 
       <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {/* 1 — Audit */}
