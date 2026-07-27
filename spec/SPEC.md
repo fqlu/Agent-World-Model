@@ -1,6 +1,6 @@
 # Drive Context Protocol — Specification
 
-**Version:** 0.14.0 (draft)
+**Version:** 0.15.0 (draft)
 **Status:** 🟠 Draft — under review by James Lu
 **Reference implementation:** a personal knowledge-work Drive (`incubeta` profile)
 
@@ -50,7 +50,7 @@ declares where those primitives are mounted in a root topology manifest,
 `_Workspace.yaml`:
 
 ```yaml
-spec_version: 0.14.0
+spec_version: 0.15.0
 profile: incubeta
 mounts:
   areas: [Clients, Internal]   # scope-bearing folders (≥1, any names)
@@ -680,6 +680,28 @@ generated bundles claim `okf_version`.
   (derived → asserted) — verification is never fabricated. Hygiene:
   `[TR-001]` warns when `stale_after` is breached (unless deprecated);
   `[TR-002]` warns on malformed trust fields.
+- **Attested Computations (v0.15, from OKF v0.2).** Important numbers come
+  from queries; an attested computation makes the query itself a governed
+  concept — "the official, tamper-proof recipe for a number." A markdown
+  content file (living in the owning scope) with frontmatter
+  `type: Attested Computation` plus:
+  - `runtime:` (required — e.g. `BigQuery (GoogleSQL)`), `schedule:` and
+    `executor:` (optional operational facts);
+  - `parameters:` — the deliberately-fillable blanks (`{name, description,
+    example?}`). An agent MAY set parameters; it MUST NOT alter anything else;
+  - the **sanctioned computation** as the file's first ```sql fenced block —
+    the single source of truth for the logic;
+  - `receipts:` — evidence of runs, appended over time (`{at, by, params?,
+    result_summary?, attested: pass|fail}`);
+  - normal trust fields (`generated`, `verified`, `sources`, `status`).
+  The **attester** is a deterministic, no-LLM script (`npm run attest`) that
+  canonicalises the sanctioned SQL and the SQL-that-actually-ran (strip
+  comments, collapse whitespace) and compares them; parameters are substituted
+  before comparison. Verdicts MUST be surfaced, never silently dropped — a
+  FAIL means someone (human or agent) changed the logic, which is either an
+  incident or a proposal to re-verify the definition. Attested computations
+  export to bundles as concepts like any content file. (Lint family `AC-*`
+  planned for v0.15.1.)
 - **Bundle export.** Tooling emits conformant OKF v0.2 bundles — a directory
   of concept documents, each with a required `type`, plus reserved `index.md`
   and `log.md`. A workspace produces MANY named bundles: whole-workspace, one

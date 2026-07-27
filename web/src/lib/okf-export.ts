@@ -1,5 +1,6 @@
 import fs from "node:fs/promises";
 import path from "node:path";
+import crypto from "node:crypto";
 import YAML from "yaml";
 import { Connector } from "./connector";
 import { parseWorkspaceYaml, allowedForms, declaredAliases, parseFrontmatter } from "./workspace";
@@ -283,7 +284,9 @@ export async function exportOkfBundle(
           sources: src.data.sources,
           stale_after: src.data.stale_after,
         });
-        const cSlug = slug(e.path);
+        // Deep paths share long prefixes; a bare 80-char slug collides and
+        // silently overwrites siblings. Suffix with a short path hash.
+        const cSlug = `${slug(e.path).slice(0, 64)}-${crypto.createHash("sha1").update(e.path).digest("hex").slice(0, 6)}`;
         await fs.writeFile(path.join(outDir, "reference", `${cSlug}.md`), `${fm}\n${body}\n`);
         indexEntries.push({ section: "Reference", line: `[${title}](/reference/${cSlug}.md)` });
         referenceCount++;

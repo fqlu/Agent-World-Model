@@ -7,7 +7,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "maintain": "tsx scripts/maintain.ts"
+    "maintain": "tsx scripts/maintain.ts",
+    "attest": "tsx scripts/attest.ts"
   },
   "dependencies": {
     "@xyflow/react": "^12.11.0",
