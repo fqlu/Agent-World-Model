@@ -106,9 +106,9 @@ workstreams + projects, the same way.
    present a plan to the human before executing. Content edits within the
    rituals above don't need approval.
    Note: everything you write is queued for the owner's review afterwards —
-   blessed files gain a `verified: human:<owner>` trust stamp; sloppy ones
-   get flagged back to a future session (possibly you) to fix. Write like
-   someone will read the diff, because someone will.
+   files they verify gain a `verified: human:<owner>` trust stamp; sloppy
+   ones get flagged back to a future session (possibly you) to fix. Write
+   like someone will read the diff, because someone will.
 9. **Ask when ambiguous.** A wrong-but-confident filing costs more than a
    question.
 

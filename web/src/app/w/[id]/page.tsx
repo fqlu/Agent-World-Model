@@ -54,7 +54,7 @@ export default async function WorkspacePage({ params }: { params: Promise<{ id: 
         <span>
           <span className="font-semibold text-zinc-900">Review changes</span>
           <span className="block text-xs text-zinc-500">
-            See what any agent changed since you last looked — bless it (stamps{" "}
+            See what any agent changed since you last looked, diff included — verify it (stamps{" "}
             <code className="font-mono">verified</code>) or flag it for the next agent to fix.
           </span>
         </span>

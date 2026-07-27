@@ -462,11 +462,12 @@ the core dependency-free and every model change human-reviewable.
 **The review-and-verify loop (v0.14).** Writes are never gated: any agent, in
 any tool, MAY write files directly at any time — the protocol's contract is
 reconciliation-after-write (the git model), not transactions. Tooling keeps a
-second manifest, the **last-reviewed snapshot**, separate from the sync
-snapshot. When the owner reviews, the diff since their last review is shown
-with each file **linted at review time**. Two verdicts per file:
+second manifest, the **last-reviewed snapshot** (hashes for detection, full
+text for before/after diffs), separate from the sync snapshot. When the owner
+reviews, the diff since their last review is shown with each file **linted at
+review time**. Two verdicts per file:
 
-- **Bless** — marks it reviewed; on entity files and scope overviews this
+- **Verify** — marks it reviewed; on entity files and scope overviews this
   appends a `verified: human:<owner>` event (§12), turning the owner's review
   into durable trust metadata. The tool's own bookkeeping (its journal
   attribution line) folds into the baseline so it never re-queues itself.

@@ -62,6 +62,12 @@ CREATE TABLE IF NOT EXISTS review_state (
   flags TEXT NOT NULL DEFAULT '[]',
   reviewed_at TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS review_snapshots (
+  workspace_id INTEGER NOT NULL REFERENCES workspaces(id),
+  path TEXT NOT NULL,
+  content TEXT NOT NULL,
+  PRIMARY KEY (workspace_id, path)
+);
 CREATE TABLE IF NOT EXISTS bundles (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   workspace_id INTEGER NOT NULL REFERENCES workspaces(id),
@@ -192,6 +198,7 @@ export const q = {
     db.prepare("DELETE FROM proposals WHERE workspace_id = ?").run(id);
     db.prepare("DELETE FROM sync_state WHERE workspace_id = ?").run(id);
     db.prepare("DELETE FROM review_state WHERE workspace_id = ?").run(id);
+    db.prepare("DELETE FROM review_snapshots WHERE workspace_id = ?").run(id);
     db.prepare("DELETE FROM bundles WHERE workspace_id = ?").run(id);
     db.prepare("DELETE FROM workspaces WHERE id = ?").run(id);
   },
@@ -241,6 +248,23 @@ export const q = {
         "INSERT INTO review_state (workspace_id, manifest, flags, reviewed_at) VALUES (?,?,?,datetime('now')) ON CONFLICT(workspace_id) DO UPDATE SET manifest = excluded.manifest, flags = excluded.flags, reviewed_at = excluded.reviewed_at",
       )
       .run(workspaceId, JSON.stringify(manifest), JSON.stringify(flags)),
+
+  getSnapshot: (workspaceId: number, path: string) =>
+    (
+      getDb()
+        .prepare("SELECT content FROM review_snapshots WHERE workspace_id = ? AND path = ?")
+        .get(workspaceId, path) as { content: string } | undefined
+    )?.content,
+  setSnapshot: (workspaceId: number, path: string, content: string) =>
+    getDb()
+      .prepare(
+        "INSERT INTO review_snapshots (workspace_id, path, content) VALUES (?,?,?) ON CONFLICT(workspace_id, path) DO UPDATE SET content = excluded.content",
+      )
+      .run(workspaceId, path, content),
+  deleteSnapshot: (workspaceId: number, path: string) =>
+    getDb()
+      .prepare("DELETE FROM review_snapshots WHERE workspace_id = ? AND path = ?")
+      .run(workspaceId, path),
 
   getSyncState: (workspaceId: number) =>
     getDb().prepare("SELECT manifest, synced_at FROM sync_state WHERE workspace_id = ?").get(workspaceId) as

@@ -1,16 +1,21 @@
 import { NextRequest, NextResponse } from "next/server";
 import { q } from "@/lib/db";
 import { connectorFor } from "@/lib/hub";
-import { getReviewQueue, blessPaths, flagPath, unflagPath, flagsScaffold } from "@/lib/review";
+import { getReviewQueue, verifyPaths, getFileDiff, flagPath, unflagPath, flagsScaffold } from "@/lib/review";
 
+// GET → the queue; GET ?diff=<path> → before/after diff for one file
 export async function GET(
-  _req: NextRequest,
+  req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
   const { id } = await params;
   const ws = q.getWorkspace(Number(id));
   if (!ws) return NextResponse.json({ error: "Workspace not found" }, { status: 404 });
   try {
+    const diffPath = req.nextUrl.searchParams.get("diff");
+    if (diffPath) {
+      return NextResponse.json(await getFileDiff(connectorFor(ws), ws.id, diffPath));
+    }
     const queue = await getReviewQueue(connectorFor(ws), ws.id);
     return NextResponse.json({ ...queue, scaffold: flagsScaffold(queue.flags) });
   } catch (e) {
@@ -18,7 +23,7 @@ export async function GET(
   }
 }
 
-// { action: "bless", paths: string[] } | { action: "flag", path, note } |
+// { action: "verify", paths: string[] } | { action: "flag", path, note } |
 // { action: "unflag", path }
 export async function POST(
   req: NextRequest,
@@ -31,8 +36,8 @@ export async function POST(
   if (!body?.action) return NextResponse.json({ error: "Body needs { action }" }, { status: 400 });
   try {
     const c = connectorFor(ws);
-    if (body.action === "bless" && Array.isArray(body.paths)) {
-      const result = await blessPaths(c, ws.id, body.paths.map(String));
+    if (body.action === "verify" && Array.isArray(body.paths)) {
+      const result = await verifyPaths(c, ws.id, body.paths.map(String));
       // stamped files changed the model's inputs — refresh projections
       if (result.stamped.length) {
         try {

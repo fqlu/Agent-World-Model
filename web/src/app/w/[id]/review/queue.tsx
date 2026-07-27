@@ -17,11 +17,25 @@ type Queue = {
   flags: Flag[];
   scaffold: string;
 };
+type DiffLine = { t: "add" | "del" | "ctx"; s: string };
+type FileDiff = {
+  path: string;
+  binary: boolean;
+  hasPrevious: boolean;
+  lines: DiffLine[] | null;
+  current: string | null;
+};
 
 const CHANGE_BADGE: Record<string, string> = {
   added: "badge bg-green-100 text-green-700",
   modified: "badge bg-amber-100 text-amber-700",
   removed: "badge bg-red-100 text-red-700",
+};
+
+const LINE_CLASS: Record<DiffLine["t"], string> = {
+  add: "bg-green-50 text-green-900",
+  del: "bg-red-50 text-red-800 line-through decoration-red-300",
+  ctx: "text-zinc-500",
 };
 
 export default function ReviewQueue({ wsId }: { wsId: number }) {
@@ -32,6 +46,8 @@ export default function ReviewQueue({ wsId }: { wsId: number }) {
   const [flagging, setFlagging] = useState<string | null>(null);
   const [flagNote, setFlagNote] = useState("");
   const [lastResult, setLastResult] = useState<string | null>(null);
+  const [open, setOpen] = useState<string | null>(null);
+  const [diffs, setDiffs] = useState<Record<string, FileDiff | "loading">>({});
 
   const load = useCallback(async () => {
     setError(null);
@@ -41,6 +57,8 @@ export default function ReviewQueue({ wsId }: { wsId: number }) {
       if (!res.ok) throw new Error(body.error ?? "Failed to load review queue");
       setQueue(body);
       setPicked(new Set((body.items as Item[]).map((i) => i.path)));
+      setOpen(null);
+      setDiffs({});
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     }
@@ -49,6 +67,28 @@ export default function ReviewQueue({ wsId }: { wsId: number }) {
   useEffect(() => {
     void load();
   }, [load]);
+
+  const toggleDiff = useCallback(
+    async (path: string) => {
+      if (open === path) {
+        setOpen(null);
+        return;
+      }
+      setOpen(path);
+      if (!diffs[path]) {
+        setDiffs((d) => ({ ...d, [path]: "loading" }));
+        try {
+          const res = await fetch(`/api/workspaces/${wsId}/review?diff=${encodeURIComponent(path)}`);
+          const body = await res.json();
+          if (!res.ok) throw new Error(body.error ?? "Diff failed");
+          setDiffs((d) => ({ ...d, [path]: body }));
+        } catch (e) {
+          setError(e instanceof Error ? e.message : String(e));
+        }
+      }
+    },
+    [wsId, open, diffs],
+  );
 
   const act = useCallback(
     async (payload: Record<string, unknown>, doneMsg?: (r: Record<string, unknown>) => string) => {
@@ -107,17 +147,17 @@ export default function ReviewQueue({ wsId }: { wsId: number }) {
             <span className="text-xs text-zinc-400">{queue.reviewedAt ?? "never"}</span>
             <button
               onClick={() =>
-                act({ action: "bless", paths: [...picked] }, (r) =>
-                  `Blessed ${r.blessed} file(s)` +
+                act({ action: "verify", paths: [...picked] }, (r) =>
+                  `Verified ${r.verified} file(s)` +
                   ((r.stamped as string[]).length
-                    ? ` — ${(r.stamped as string[]).length} verified stamp(s) written`
+                    ? ` — ${(r.stamped as string[]).length} trust stamp(s) written`
                     : ""),
                 )
               }
               disabled={busy || picked.size === 0}
               className="btn-primary ml-auto"
             >
-              {busy ? "Working…" : `Bless selected (${picked.size})`}
+              {busy ? "Working…" : `Verify selected (${picked.size})`}
             </button>
           </div>
           <ul className="mt-4 space-y-2">
@@ -135,15 +175,23 @@ export default function ReviewQueue({ wsId }: { wsId: number }) {
                     <span className="badge bg-indigo-100 text-indigo-700">stamps verified</span>
                   )}
                   <span className="min-w-0 break-all font-mono text-xs text-zinc-700">{i.path}</span>
-                  <button
-                    onClick={() => {
-                      setFlagging(flagging === i.path ? null : i.path);
-                      setFlagNote("");
-                    }}
-                    className="ml-auto text-xs text-amber-700 hover:underline"
-                  >
-                    Flag
-                  </button>
+                  <span className="ml-auto flex items-center gap-3">
+                    <button
+                      onClick={() => toggleDiff(i.path)}
+                      className="text-xs text-indigo-600 hover:underline"
+                    >
+                      {open === i.path ? "Hide changes" : "View changes"}
+                    </button>
+                    <button
+                      onClick={() => {
+                        setFlagging(flagging === i.path ? null : i.path);
+                        setFlagNote("");
+                      }}
+                      className="text-xs text-amber-700 hover:underline"
+                    >
+                      Flag
+                    </button>
+                  </span>
                 </div>
                 {i.findings.length > 0 && (
                   <ul className="mt-1 space-y-0.5 pl-6">
@@ -160,6 +208,15 @@ export default function ReviewQueue({ wsId }: { wsId: number }) {
                       </li>
                     ))}
                   </ul>
+                )}
+                {open === i.path && (
+                  <div className="mt-2 pl-6">
+                    {diffs[i.path] === "loading" || !diffs[i.path] ? (
+                      <p className="text-xs text-zinc-400">Loading changes…</p>
+                    ) : (
+                      <DiffView diff={diffs[i.path] as FileDiff} />
+                    )}
+                  </div>
                 )}
                 {flagging === i.path && (
                   <div className="mt-2 flex items-center gap-2 pl-6">
@@ -218,6 +275,44 @@ export default function ReviewQueue({ wsId }: { wsId: number }) {
           </details>
         </div>
       )}
+    </div>
+  );
+}
+
+function DiffView({ diff }: { diff: FileDiff }) {
+  if (diff.binary) {
+    return (
+      <p className="rounded-lg bg-zinc-50 p-3 text-xs text-zinc-500">
+        Binary / non-text file (e.g. xlsx, pptx) — no inline preview. Open it from the folder to
+        review, then verify or flag here.
+      </p>
+    );
+  }
+  if (!diff.lines) {
+    return (
+      <p className="rounded-lg bg-zinc-50 p-3 text-xs text-zinc-500">
+        File too large to diff inline — open it from the folder to review.
+      </p>
+    );
+  }
+  return (
+    <div className="overflow-x-auto rounded-lg border border-zinc-200 bg-white">
+      {!diff.hasPrevious && (
+        <p className="border-b border-zinc-100 px-3 py-1.5 text-[11px] text-zinc-400">
+          No earlier version captured (new file, or changed before diff tracking began) — showing
+          the full current content.
+        </p>
+      )}
+      <pre className="max-h-96 overflow-y-auto p-0 font-mono text-[12px] leading-relaxed">
+        {diff.lines.map((l, idx) => (
+          <div key={idx} className={`px-3 ${LINE_CLASS[l.t]}`}>
+            <span className="select-none pr-2 text-zinc-300">
+              {l.t === "add" ? "+" : l.t === "del" ? "−" : " "}
+            </span>
+            {l.s || " "}
+          </div>
+        ))}
+      </pre>
     </div>
   );
 }
