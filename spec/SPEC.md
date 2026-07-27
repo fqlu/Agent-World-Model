@@ -667,10 +667,12 @@ generated bundles claim `okf_version`.
   to preserve unknown fields.
 - **Trust signals (v0.14, from OKF v0.2).** Entity files and scope overviews
   MAY carry `generated: {by, at}` (who/when produced it — actor convention:
-  `human:<id>` | `<producer>/<version>` | `process:<id>`), `verified:` (a list
-  of `{by, at, note?}` confirmation events), `sources:` (`{id?, resource,
-  title?}` provenance refs), `status: draft|stable|deprecated` (default
-  stable), and `stale_after: YYYY-MM-DD`. Trust tier is derived: any
+  `human:<id>` | `<producer>/<version>` | `process:<id>`), `verified:` (the
+  file's CURRENT attestations — `{by, at, note?}`, at most one entry per
+  actor; re-verifying refreshes that actor's `at`. It is not a change log:
+  edit history lives in the journal and the review diff trail), `sources:`
+  (`{id?, resource, title?}` provenance refs), `status:
+  draft|stable|deprecated` (default stable), and `stale_after: YYYY-MM-DD`. Trust tier is derived: any
   `human:` verification → *human-reviewed*; any verification →
   *machine-confirmed*; else *unverified*. **The save ritual is the trust
   event**: tooling stamps `generated` on new entity files and appends a

@@ -248,8 +248,10 @@ export async function getFileDiff(c: Connector, wsId: number, path: string): Pro
 
 // ---- Verify / flag ----------------------------------------------------------
 
-// Append a verified event to a markdown file's frontmatter (creating the
-// frontmatter block if absent). Returns the new content.
+// Upsert a verified attestation into a markdown file's frontmatter (creating
+// the block if absent). `verified:` holds CURRENT attestations — at most one
+// entry per actor; re-verifying refreshes that actor's date. It is not a
+// change log: history lives in the journal and the review diff trail.
 function injectVerified(md: string, by: string, at: string, note: string): string {
   const m = md.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n?([\s\S]*)$/);
   let data: Record<string, unknown> = {};
@@ -262,9 +264,8 @@ function injectVerified(md: string, by: string, at: string, note: string): strin
     }
     body = m[2];
   }
-  const verified = Array.isArray(data.verified) ? data.verified : [];
-  verified.push({ by, at, note });
-  data.verified = verified;
+  const verified = (Array.isArray(data.verified) ? data.verified : []) as { by?: string }[];
+  data.verified = [...verified.filter((v) => v?.by !== by), { by, at, note }];
   return `---\n${YAML.stringify(data).trimEnd()}\n---\n${body.startsWith("\n") ? "" : "\n"}${body}`;
 }
 

@@ -230,9 +230,12 @@ export async function saveEntities(
     }
     const confirmedNow =
       e.source === "asserted" && (!prev || prev.source === "derived");
-    const alreadyStamped = e.verified.some((v) => v.by === ownerId && v.at === today);
-    if (confirmedNow && !alreadyStamped && prev) {
-      e.verified = [...e.verified, { by: ownerId, at: today, note: "confirmed derived → asserted" }];
+    if (confirmedNow && prev) {
+      // one attestation per actor — a re-confirm refreshes the date
+      e.verified = [
+        ...e.verified.filter((v) => v.by !== ownerId),
+        { by: ownerId, at: today, note: "confirmed derived → asserted" },
+      ];
     }
   }
 
