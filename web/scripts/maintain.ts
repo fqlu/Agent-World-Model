@@ -17,6 +17,7 @@ import { q } from "../src/lib/db";
 import { connectorFor } from "../src/lib/hub";
 import { applySyncSvc, runAuditSvc, listBundlesSvc, refreshBundleSvc } from "../src/lib/service";
 import { getReviewQueue } from "../src/lib/review";
+import { computeInsights } from "../src/lib/graph-insights";
 import { diffCount } from "../src/lib/sync";
 
 const argWs = (() => {
@@ -65,8 +66,9 @@ async function maintain(wsId: number): Promise<void> {
     line(`bundles: unchanged (no drift)`);
   }
 
-  // 4. review queue + digest
+  // 4. review queue + graph insights + digest
   const queue = await getReviewQueue(c, wsId);
+  const gi = await computeInsights(c).catch(() => ({ insights: [], stats: {} as Record<string, number> }));
   const fresh = await listBundlesSvc(wsId);
 
   const digest = [
@@ -90,6 +92,11 @@ async function maintain(wsId: number): Promise<void> {
           ...stale.map((f) => `  - \`${f.path}\` — ${f.message}`),
         ]
       : []),
+    ``,
+    `## Graph insights`,
+    ...(gi.insights.length
+      ? gi.insights.slice(0, 8).map((i) => `- **${i.kind}** — ${i.title}`)
+      : ["- No structural findings."]),
     ``,
     `## Health`,
     `- Audit: ${errors} errors · ${warns} warnings`,

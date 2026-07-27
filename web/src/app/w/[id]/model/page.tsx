@@ -4,6 +4,7 @@ import { q } from "@/lib/db";
 import { connectorFor } from "@/lib/hub";
 import { buildModel } from "@/lib/model-gen";
 import ModelGraph from "./graph";
+import InsightsPanel from "./insights-panel";
 
 export const dynamic = "force-dynamic";
 
@@ -49,6 +50,7 @@ export default async function ModelPage({ params }: { params: Promise<{ id: stri
             <span>generated {model.generated}</span>
           </div>
           <ModelGraph model={model} />
+          <InsightsPanel wsId={ws.id} />
         </>
       )}
     </div>
