@@ -44,13 +44,13 @@ function firstSentence(md: string): string {
   return line.length > 200 ? line.slice(0, 197) + "…" : line;
 }
 
-export type OkfResult = { path: string; concepts: number; entities: number; scopes: number; groups: number };
+export type OkfResult = { path: string; concepts: number; entities: number; scopes: number; groups: number; references: number };
 
 export async function exportOkfBundle(
   c: Connector,
   workspaceId: number,
   workspaceName: string,
-  opts?: { slug?: string; filter?: BundleFilter },
+  opts?: { slug?: string; filter?: BundleFilter; includeContent?: boolean },
 ): Promise<OkfResult> {
   const declRaw = await c.read("_Workspace.yaml");
   const decl = declRaw ? parseWorkspaceYaml(declRaw) : null;
@@ -65,6 +65,7 @@ export async function exportOkfBundle(
   // includedScopePaths: scope paths in the slice. null = everything included.
   let includedScopePaths: Set<string> | null = null;
   let includedGroupIds: Set<string> | null = null;
+  let sliceRoots: string[] = [];
 
   const scopeNodes = model.nodes.filter((n) => n.id.startsWith("scope:"));
   const groupNodes = model.nodes.filter((n) => n.id.startsWith("group:"));
@@ -72,6 +73,7 @@ export async function exportOkfBundle(
   if (filter.kind === "scope") {
     const root = filter.ref.replace(/\/+$/, "");
     if (!(await c.exists(root))) throw new Error(`Bundle scope "${root}" does not exist`);
+    sliceRoots = [root];
     includedScopePaths = new Set(
       scopeNodes.map((n) => n.id.slice(6)).filter((p) => p === root || p.startsWith(root + "/")),
     );
@@ -90,6 +92,7 @@ export async function exportOkfBundle(
     const memberPaths = model.edges
       .filter((e) => e.predicate === "in-group" && e.to === gnode.id)
       .map((e) => e.from.slice(6));
+    sliceRoots = memberPaths;
     includedScopePaths = new Set(
       scopeNodes
         .map((n) => n.id.slice(6))
@@ -133,6 +136,7 @@ export async function exportOkfBundle(
   let entityCount = 0;
   let scopeCount = 0;
   let groupCount = 0;
+  let referenceCount = 0;
   const indexEntries: { section: string; line: string }[] = [];
 
   // ---- Entity concepts ----
@@ -228,6 +232,76 @@ export async function exportOkfBundle(
     groupCount++;
   }
 
+  // ---- Content files (opt-in, slice bundles only) ----
+  // Carries the slice's markdown content files as Reference concepts and
+  // lists non-markdown artifacts, so the bundle can answer questions the
+  // overviews alone can't (specs, QA procedures, test plans). Excluded:
+  // WIP Notes (internal meeting detail), Draft_-prefixed files (not stable),
+  // _-prefixed context machinery, dotfiles.
+  if (opts?.includeContent && sliceRoots.length) {
+    await fs.mkdir(path.join(outDir, "reference"), { recursive: true });
+    const artifacts: string[] = [];
+    const seen = new Set<string>();
+    const walkContent = async (dir: string) => {
+      let entries;
+      try {
+        entries = await c.list(dir);
+      } catch {
+        return;
+      }
+      for (const e of entries) {
+        if (e.name.startsWith(".") || e.name.startsWith("_")) continue;
+        if (e.kind === "folder") {
+          if (e.name.endsWith("| WIP Notes")) continue;
+          await walkContent(e.path);
+          continue;
+        }
+        if (e.name.startsWith("Draft_") || e.name === "_Overview.md" || e.name === "_Tasks.md") continue;
+        if (seen.has(e.path)) continue;
+        seen.add(e.path);
+        if (!e.name.endsWith(".md")) {
+          artifacts.push(e.path);
+          continue;
+        }
+        const md = await c.read(e.path);
+        if (md === null) {
+          artifacts.push(e.path);
+          continue;
+        }
+        const src = parseFrontmatter(md);
+        const body = stripFrontmatter(md);
+        const heading = body.match(/^#\s+(.+)$/m)?.[1]?.trim();
+        const title = (src.data.title as string) ?? heading ?? e.name.replace(/\.md$/, "");
+        const fm = frontmatter({
+          type: (src.data.type as string) ?? "Reference",
+          title,
+          description: (src.data.description as string) ?? firstSentence(body),
+          resource: e.path,
+          status: src.data.status && src.data.status !== "stable" ? src.data.status : undefined,
+          generated: src.data.generated,
+          verified: src.data.verified,
+          sources: src.data.sources,
+          stale_after: src.data.stale_after,
+        });
+        const cSlug = slug(e.path);
+        await fs.writeFile(path.join(outDir, "reference", `${cSlug}.md`), `${fm}\n${body}\n`);
+        indexEntries.push({ section: "Reference", line: `[${title}](/reference/${cSlug}.md)` });
+        referenceCount++;
+      }
+    };
+    for (const root of sliceRoots) await walkContent(root);
+    if (artifacts.length) {
+      const fm = frontmatter({
+        type: "Reference",
+        title: "Artifacts",
+        description: "Non-markdown files in this slice — retrieve them from the workspace paths below.",
+      });
+      const body = artifacts.sort().map((p) => `- \`${p}\``).join("\n");
+      await fs.writeFile(path.join(outDir, "artifacts.md"), `${fm}\n# Artifacts\n\n${body}\n`);
+      indexEntries.push({ section: "Reference", line: `[Artifacts](/artifacts.md) — ${artifacts.length} file(s)` });
+    }
+  }
+
   // ---- House rules → a Reference concept (so consuming agents inherit them) ----
   const houseRules = decl?.house_rules ?? [];
   if (houseRules.length) {
@@ -259,13 +333,13 @@ export async function exportOkfBundle(
   const bundleTitle =
     filter.kind === "workspace" ? workspaceName : `${workspaceName} — ${opts?.slug ?? filter.ref}`;
   let index = `---\nokf_version: "0.2"\n---\n\n# ${bundleTitle} — OKF bundle\n\n`;
-  index += `> Exported from a Drive Context Protocol workspace. ${entityCount + scopeCount + groupCount} concepts.`;
+  index += `> Exported from a Drive Context Protocol workspace. ${entityCount + scopeCount + groupCount + referenceCount} concepts.`;
   if (filter.kind !== "workspace") index += ` Slice: ${filter.kind} "${filter.ref}".`;
   index += `\n\n`;
   for (const [section, lines] of sections) index += `## ${section}\n${lines.join("\n")}\n\n`;
   await fs.writeFile(path.join(outDir, "index.md"), index);
 
-  return { path: outDir, concepts: entityCount + scopeCount + groupCount, entities: entityCount, scopes: scopeCount, groups: groupCount };
+  return { path: outDir, concepts: entityCount + scopeCount + groupCount + referenceCount, entities: entityCount, scopes: scopeCount, groups: groupCount, references: referenceCount };
 }
 
 function stripFrontmatter(md: string): string {

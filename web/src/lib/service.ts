@@ -284,7 +284,8 @@ export type BundleView = {
   scopeKind: "workspace" | "scope" | "group";
   scopeRef: string | null;
   path: string;
-  stats: { concepts: number; entities: number; scopes: number; groups: number } | null;
+  stats: { concepts: number; entities: number; scopes: number; groups: number; references?: number } | null;
+  includeContent: boolean;
   createdAt: string;
   updatedAt: string;
 };
@@ -298,6 +299,7 @@ function bundleView(r: import("./db").BundleRow): BundleView {
     scopeRef: r.scope_ref,
     path: r.path,
     stats: r.stats ? JSON.parse(r.stats) : null,
+    includeContent: r.include_content === 1,
     createdAt: r.created_at,
     updatedAt: r.updated_at,
   };
@@ -307,8 +309,9 @@ export async function listBundlesSvc(wsId: number): Promise<BundleView[]> {
   return q.listBundles(wsId).map(bundleView);
 }
 
-// Options for the create form: client-level scopes (depth-1 in each area) and
-// root-level context groups.
+// Options for the create form: every promoted scope (any folder with an
+// _Overview.md, at any depth) plus root-level context groups. The export
+// engine slices on any path, so the picker shouldn't be narrower than it.
 export async function bundleOptionsSvc(
   wsId: number,
 ): Promise<{ scopes: string[]; groups: { slug: string; title: string }[] }> {
@@ -318,12 +321,20 @@ export async function bundleOptionsSvc(
   const declRaw = await c.read("_Workspace.yaml");
   const decl = declRaw ? parseWorkspaceYaml(declRaw) : null;
   const scopes: string[] = [];
-  for (const area of decl?.mounts?.areas ?? []) {
-    if (!(await c.exists(area))) continue;
-    for (const e of await c.list(area)) {
-      if (e.kind === "folder" && !e.name.startsWith("_") && !e.name.includes("|")) scopes.push(e.path);
+  async function walk(path: string, depth: number) {
+    for (const e of await c.list(path)) {
+      if (e.kind !== "folder" || e.name.startsWith("_") || e.name.startsWith(".")) continue;
+      if (e.name.endsWith("| WIP Notes")) continue;
+      const children = await c.list(e.path);
+      const promoted = children.some((x) => x.name === "_Overview.md");
+      if (promoted) scopes.push(e.path);
+      if (depth < 3) await walk(e.path, depth + 1);
     }
   }
+  for (const area of decl?.mounts?.areas ?? []) {
+    if (await c.exists(area)) await walk(area, 1);
+  }
+  scopes.sort();
   const { listGroups } = await import("./context");
   const { groups } = await listGroups(c, "");
   return { scopes, groups: groups.map((g) => ({ slug: g.slug, title: g.title })) };
@@ -334,6 +345,7 @@ export async function createBundleSvc(
   name: string,
   scopeKind: "workspace" | "scope" | "group",
   scopeRef?: string | null,
+  includeContent?: boolean,
 ): Promise<BundleView> {
   const ws = q.getWorkspace(wsId);
   if (!ws) throw new Error(`Workspace ${wsId} not found`);
@@ -345,7 +357,8 @@ export async function createBundleSvc(
   const c = connectorFor(ws);
   const filter =
     scopeKind === "workspace" ? ({ kind: "workspace" } as const) : ({ kind: scopeKind, ref: scopeRef! } as const);
-  const result = await exportOkfBundle(c, ws.id, ws.name, { slug, filter });
+  const withContent = !!includeContent && scopeKind !== "workspace";
+  const result = await exportOkfBundle(c, ws.id, ws.name, { slug, filter, includeContent: withContent });
   const id = q.createBundle({
     workspace_id: wsId,
     name: name.trim(),
@@ -353,8 +366,9 @@ export async function createBundleSvc(
     scope_kind: scopeKind,
     scope_ref: scopeRef ?? null,
     path: result.path,
+    include_content: withContent,
   });
-  q.touchBundle(id, { concepts: result.concepts, entities: result.entities, scopes: result.scopes, groups: result.groups });
+  q.touchBundle(id, { concepts: result.concepts, entities: result.entities, scopes: result.scopes, groups: result.groups, references: result.references });
   try {
     const declRaw = await c.read("_Workspace.yaml");
     const journal = (declRaw ? parseWorkspaceYaml(declRaw) : null)?.mounts?.journal ?? "Journal";
@@ -376,8 +390,12 @@ export async function refreshBundleSvc(wsId: number, bundleId: number): Promise<
     b.scope_kind === "workspace"
       ? ({ kind: "workspace" } as const)
       : ({ kind: b.scope_kind, ref: b.scope_ref! } as const);
-  const result = await exportOkfBundle(c, ws.id, ws.name, { slug: b.slug, filter });
-  q.touchBundle(b.id, { concepts: result.concepts, entities: result.entities, scopes: result.scopes, groups: result.groups });
+  const result = await exportOkfBundle(c, ws.id, ws.name, {
+    slug: b.slug,
+    filter,
+    includeContent: b.include_content === 1,
+  });
+  q.touchBundle(b.id, { concepts: result.concepts, entities: result.entities, scopes: result.scopes, groups: result.groups, references: result.references });
   return bundleView(q.getBundle(b.id)!);
 }
 

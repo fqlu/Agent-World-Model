@@ -9,7 +9,8 @@ type Bundle = {
   scopeKind: "workspace" | "scope" | "group";
   scopeRef: string | null;
   path: string;
-  stats: { concepts: number; entities: number; scopes: number; groups: number } | null;
+  stats: { concepts: number; entities: number; scopes: number; groups: number; references?: number } | null;
+  includeContent: boolean;
   createdAt: string;
   updatedAt: string;
 };
@@ -29,6 +30,7 @@ export default function BundlesPanel({ wsId }: { wsId: number }) {
   const [showForm, setShowForm] = useState(false);
   const [name, setName] = useState("");
   const [sel, setSel] = useState("workspace"); // "workspace" | "scope:<path>" | "group:<slug>"
+  const [withContent, setWithContent] = useState(true);
 
   const load = useCallback(async () => {
     try {
@@ -55,7 +57,7 @@ export default function BundlesPanel({ wsId }: { wsId: number }) {
       const res = await fetch(`/api/workspaces/${wsId}/bundles`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name, scopeKind: kind, scopeRef }),
+        body: JSON.stringify({ name, scopeKind: kind, scopeRef, includeContent: kind !== "workspace" && withContent }),
       });
       const body = await res.json();
       if (!res.ok) throw new Error(body.error ?? "Create failed");
@@ -158,6 +160,16 @@ export default function BundlesPanel({ wsId }: { wsId: number }) {
               </optgroup>
             )}
           </select>
+          {sel !== "workspace" && (
+            <label className="flex items-center gap-1.5 text-xs text-zinc-600">
+              <input
+                type="checkbox"
+                checked={withContent}
+                onChange={(e) => setWithContent(e.target.checked)}
+              />
+              include content files (specs, docs — not WIP notes or drafts)
+            </label>
+          )}
           <button
             onClick={create}
             disabled={busyId === "create" || !name.trim()}
@@ -184,10 +196,12 @@ export default function BundlesPanel({ wsId }: { wsId: number }) {
                 {b.name}
               </a>
               <span className="badge bg-zinc-100 text-zinc-600">{scopeLabel(b)}</span>
+              {b.includeContent && <span className="badge bg-emerald-100 text-emerald-700">with content</span>}
               {b.stats && (
                 <span className="text-xs text-zinc-500">
                   {b.stats.concepts} concepts · {b.stats.entities} entities · {b.stats.scopes} scopes
                   {b.stats.groups ? ` · ${b.stats.groups} groups` : ""}
+                  {b.stats.references ? ` · ${b.stats.references} reference docs` : ""}
                 </span>
               )}
               <span className="text-xs text-zinc-400">built {b.updatedAt}</span>

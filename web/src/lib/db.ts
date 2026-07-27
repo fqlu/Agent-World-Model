@@ -16,6 +16,12 @@ function getDb(): DatabaseType.Database {
   const db = new Database(path.join(DATA_DIR, "hub.db"));
   db.pragma("journal_mode = WAL");
   db.exec(SCHEMA);
+  // Additive migrations (CREATE IF NOT EXISTS can't add columns)
+  try {
+    db.exec("ALTER TABLE bundles ADD COLUMN include_content INTEGER NOT NULL DEFAULT 0");
+  } catch {
+    /* column already exists */
+  }
   _db = db;
   return db;
 }
@@ -110,6 +116,7 @@ export type BundleRow = {
   scope_ref: string | null;
   path: string;
   stats: string | null;
+  include_content: number; // 0|1 — carry the slice's content files as Reference concepts
   created_at: string;
   updated_at: string;
 };
@@ -221,13 +228,14 @@ export const q = {
     scope_kind: string;
     scope_ref?: string | null;
     path: string;
+    include_content?: boolean;
   }) =>
     Number(
       getDb()
         .prepare(
-          "INSERT INTO bundles (workspace_id, name, slug, scope_kind, scope_ref, path) VALUES (?,?,?,?,?,?)",
+          "INSERT INTO bundles (workspace_id, name, slug, scope_kind, scope_ref, path, include_content) VALUES (?,?,?,?,?,?,?)",
         )
-        .run(b.workspace_id, b.name, b.slug, b.scope_kind, b.scope_ref ?? null, b.path)
+        .run(b.workspace_id, b.name, b.slug, b.scope_kind, b.scope_ref ?? null, b.path, b.include_content ? 1 : 0)
         .lastInsertRowid,
     ),
   touchBundle: (id: number, stats: unknown) =>

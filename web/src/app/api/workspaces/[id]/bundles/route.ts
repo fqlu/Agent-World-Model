@@ -27,7 +27,13 @@ export async function POST(
     return NextResponse.json({ error: "Body needs { name, scopeKind, scopeRef? }" }, { status: 400 });
   }
   try {
-    const bundle = await createBundleSvc(Number(id), body.name, body.scopeKind, body.scopeRef ?? null);
+    const bundle = await createBundleSvc(
+      Number(id),
+      body.name,
+      body.scopeKind,
+      body.scopeRef ?? null,
+      body.includeContent === true,
+    );
     return NextResponse.json({ bundle });
   } catch (e) {
     return NextResponse.json({ error: e instanceof Error ? e.message : String(e) }, { status: 400 });
