@@ -36,8 +36,15 @@ async function maintain(wsId: number): Promise<void> {
     line(`- skipping ${ws.name} (${ws.kind} — local maintenance only)`);
     return;
   }
+  try {
+    const fs = await import("node:fs/promises");
+    await fs.access(ws.root);
+  } catch {
+    line(`- skipping ${ws.name}: root no longer exists (${ws.root}) — remove this workspace in the app`);
+    return;
+  }
   const c = connectorFor(ws);
-  const now = new Date().toISOString().slice(0, 16).replace("T", " ");
+  const now = new Date().toLocaleString("sv-SE", { hour12: false }).slice(0, 16) + " (local)";
   line(`\n== ${ws.name} (#${ws.id}) — ${now} ==`);
 
   // 1. sync (refreshes projections; journals only when drift exists)

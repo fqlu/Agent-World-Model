@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { q } from "@/lib/db";
 import { listBundleFiles, readBundleFile } from "@/lib/bundle-files";
+import LocalTime from "@/app/local-time";
 
 export const dynamic = "force-dynamic";
 
@@ -56,7 +57,7 @@ export default async function BundlePage({
           Bundle · {bundle.name}
         </h1>
         <p className="mt-1 text-xs text-zinc-500">
-          {stats ? `${stats.concepts} concepts` : ""} · built {bundle.updated_at} ·{" "}
+          {stats ? `${stats.concepts} concepts` : ""} · built <LocalTime utc={bundle.updated_at} /> ·{" "}
           <a
             href={`/api/workspaces/${ws.id}/bundles/${bundle.id}/viz`}
             target="_blank"

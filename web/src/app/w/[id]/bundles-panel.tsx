@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import LocalTime from "@/app/local-time";
 
 type Bundle = {
   id: number;
@@ -204,7 +205,7 @@ export default function BundlesPanel({ wsId }: { wsId: number }) {
                   {b.stats.references ? ` · ${b.stats.references} reference docs` : ""}
                 </span>
               )}
-              <span className="text-xs text-zinc-400">built {b.updatedAt}</span>
+              <span className="text-xs text-zinc-400">built <LocalTime utc={b.updatedAt} /></span>
               <span className="ml-auto flex items-center gap-2">
                 <a
                   href={`/api/workspaces/${wsId}/bundles/${b.id}/viz`}

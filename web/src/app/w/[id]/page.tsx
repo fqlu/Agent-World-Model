@@ -9,6 +9,7 @@ import {
 } from "@/app/actions";
 import type { AuditStats } from "@/lib/linter";
 import SyncPanel from "./sync-panel";
+import LocalTime from "@/app/local-time";
 import RemoveWorkspace from "./remove-workspace";
 import BundlesPanel from "./bundles-panel";
 
@@ -90,7 +91,7 @@ export default async function WorkspacePage({ params }: { params: Promise<{ id: 
                   href={`/w/${ws.id}/audit/${latestAudit!.id}`}
                   className="mt-1 inline-block text-xs text-indigo-600 hover:underline"
                 >
-                  View latest report ({latestAudit!.created_at}) →
+                  View latest report (<LocalTime utc={latestAudit!.created_at} />) →
                 </Link>
               </>
             ) : (
@@ -236,7 +237,7 @@ export default async function WorkspacePage({ params }: { params: Promise<{ id: 
                       className="card block px-4 py-2.5 text-sm transition hover:border-indigo-400"
                     >
                       <span className="font-medium text-zinc-900">#{a.id}</span>{" "}
-                      <span className="text-xs text-zinc-500">{a.created_at}</span>
+                      <span className="text-xs text-zinc-500"><LocalTime utc={a.created_at} /></span>
                       <div className="mt-0.5 text-xs">
                         <span className="text-red-600">{s.errors} errors</span>
                         <span className="text-zinc-400"> · </span>
@@ -266,7 +267,7 @@ export default async function WorkspacePage({ params }: { params: Promise<{ id: 
                     <span className="font-medium text-zinc-900">
                       #{p.id} · {p.kind}
                     </span>{" "}
-                    <span className="text-xs text-zinc-500">{p.created_at}</span>
+                    <span className="text-xs text-zinc-500"><LocalTime utc={p.created_at} /></span>
                     <div className="mt-0.5 text-xs">
                       <span
                         className={
