@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 type Severity = "error" | "warn" | "info";
 type EffSeverity = Severity | "off";
@@ -49,6 +49,30 @@ export default function RulesEditor({
     Object.fromEntries(rules.map((r) => [r.id, r.severity])),
   );
   const [predicates, setPredicates] = useState(conventions.relationshipPredicates.join(", "));
+  const [newPred, setNewPred] = useState("");
+  const [predUsage, setPredUsage] = useState<Record<string, number>>({});
+  useEffect(() => {
+    fetch(`/api/workspaces/${wsId}/entities`)
+      .then((r) => r.json())
+      .then((b) => {
+        const u: Record<string, number> = {};
+        for (const e of b.entities ?? [])
+          for (const rel of e.relations ?? []) u[rel.predicate] = (u[rel.predicate] ?? 0) + 1;
+        setPredUsage(u);
+      })
+      .catch(() => {});
+  }, [wsId]);
+  const predList = predicates.split(",").map((x) => x.trim()).filter(Boolean);
+  const addPred = () => {
+    const v = newPred.trim().toLowerCase().replace(/\s+/g, "-");
+    if (v && !predList.includes(v)) setPredicates([...predList, v].join(", "));
+    setNewPred("");
+  };
+  const removePred = (v: string) => {
+    const used = predUsage[v] ?? 0;
+    if (used > 0 && !window.confirm(`"${v}" is used by ${used} relationship(s) — removing it makes those RL-001 errors until they're re-predicated. Remove anyway?`)) return;
+    setPredicates(predList.filter((x) => x !== v).join(", "));
+  };
   const [wipSections, setWipSections] = useState(conventions.wipRequiredSections.join(", "));
   const [houseRules, setHouseRules] = useState<HouseRule[]>(initialHouseRules);
   const [status, setStatus] = useState<string | null>(null);
@@ -282,15 +306,38 @@ export default function RulesEditor({
       <section>
         <h2 className="text-sm font-semibold text-zinc-900">Tunable conventions</h2>
         <div className="mt-2 space-y-3">
-          <label className="block text-sm">
+          <div className="block text-sm">
             <span className="font-medium text-zinc-700">Relationship predicates</span>
-            <span className="text-xs text-zinc-500"> — the vocabulary RL-001 enforces (comma-separated)</span>
-            <input
-              value={predicates}
-              onChange={(e) => setPredicates(e.target.value)}
-              className="input font-mono text-xs"
-            />
-          </label>
+            <span className="text-xs text-zinc-500">
+              {" "}— the closed vocabulary RL-001 enforces. Counts show how many
+              relationships use each; removing an in-use predicate turns those into errors.
+            </span>
+            <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+              {predList.map((v) => (
+                <span key={v} className="badge inline-flex items-center gap-1 bg-zinc-100 font-mono text-zinc-700">
+                  {v}
+                  <span className="text-zinc-400">{predUsage[v] ?? 0}</span>
+                  <button
+                    onClick={() => removePred(v)}
+                    title={`Remove "${v}"`}
+                    className="ml-0.5 text-zinc-400 hover:text-red-600"
+                  >
+                    ×
+                  </button>
+                </span>
+              ))}
+              <input
+                value={newPred}
+                onChange={(e) => setNewPred(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), addPred())}
+                placeholder="add predicate…"
+                className="input w-36 font-mono text-xs"
+              />
+              <button onClick={addPred} disabled={!newPred.trim()} className="btn-secondary text-xs">
+                Add
+              </button>
+            </div>
+          </div>
           <label className="block text-sm">
             <span className="font-medium text-zinc-700">WIP note required sections</span>
             <span className="text-xs text-zinc-500"> — what CL-002 looks for (comma-separated)</span>

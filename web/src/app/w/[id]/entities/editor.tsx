@@ -435,7 +435,14 @@ export default function EntitiesEditor({
                           <div className="rounded-lg border border-zinc-100 bg-zinc-50 p-2">
                             <div className="flex items-center justify-between">
                               <span className="text-xs font-medium text-zinc-600">
-                                Relationships
+                                Relationships{" "}
+                                <a
+                                  href={`/w/${wsId}/rules`}
+                                  className="font-normal text-indigo-500 hover:underline"
+                                  title="Add or remove predicates on the Rules page"
+                                >
+                                  (edit vocabulary)
+                                </a>
                               </span>
                               <button
                                 onClick={() => addRelation(idx)}
