@@ -36,6 +36,14 @@ export async function applyOps(
       } else if (op.action === "move") {
         if (!op.to) throw new Error("move op without target");
         await c.move(op.path, op.to);
+        // SPEC §8: renames MUST propagate. Rewrite references to the old path
+        // in entity relations/sources and context-group members — otherwise a
+        // repair rename orphans every edge that pointed at the folder.
+        try {
+          await cascadeRefs(c, op.path, op.to);
+        } catch {
+          /* cascade is best-effort; the move itself stands */
+        }
       }
       results.push({ op, ok: true });
     } catch (e) {
@@ -43,6 +51,24 @@ export async function applyOps(
     }
   }
   return results;
+}
+
+// Rewrite exact-path references after a move/rename: entity files (relation
+// targets, source resources) and root context-group member paths. Substring
+// replacement of the full old path is safe — workspace paths are specific.
+async function cascadeRefs(c: Connector, from: string, to: string): Promise<void> {
+  const decl = await c.read("_Workspace.yaml");
+  const entMount = decl?.match(/entities:\s*(\S+)/)?.[1] ?? "_Entities";
+  const ctxMount = decl?.match(/context:\s*(\S+)/)?.[1] ?? "_Context";
+  for (const dir of [entMount, ctxMount]) {
+    if (!(await c.exists(dir))) continue;
+    for (const e of await c.list(dir)) {
+      if (e.kind !== "file" || !e.name.endsWith(".md")) continue;
+      const md = await c.read(e.path);
+      if (md === null || !md.includes(from)) continue;
+      await c.write(e.path, md.split(from).join(to), { overwrite: true });
+    }
+  }
 }
 
 // Append an attributed line to today's journal (creating the day file from the
