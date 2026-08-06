@@ -15,7 +15,8 @@
  */
 import { q } from "../src/lib/db";
 import { connectorFor } from "../src/lib/hub";
-import { applySyncSvc, runAuditSvc, listBundlesSvc, refreshBundleSvc } from "../src/lib/service";
+import { applySyncSvc, listBundlesSvc, refreshBundleSvc } from "../src/lib/service";
+import { runAudit } from "../src/lib/linter";
 import { getReviewQueue } from "../src/lib/review";
 import { computeInsights } from "../src/lib/graph-insights";
 import { diffCount } from "../src/lib/sync";
@@ -52,15 +53,27 @@ async function maintain(wsId: number): Promise<void> {
   const drift = diffCount(sync.report.diff);
   line(`sync: ${drift} change(s) since last sync`);
 
-  // 2. audit
-  const { result } = await runAuditSvc(wsId);
+  // 2. audit — with a read-anomaly guard: if the workspace suddenly parses
+  // far fewer entities than last time, the Drive placeholders were probably
+  // unhydrated (macOS CloudStorage) — record NOTHING, warn instead. A mass
+  // eviction once produced 116 phantom errors (audit #111).
+  const result = await runAudit(c, ws.profile);
   const { errors, warns } = result.stats as { errors: number; warns: number };
   const stale = result.findings.filter((f) => f.rule === "TR-001");
-  line(`audit: ${errors} error(s), ${warns} warning(s), ${stale.length} stale`);
+  const prevRow = q.listAudits(wsId)[0];
+  const prevEntities = prevRow ? ((JSON.parse(prevRow.stats).entities as number) ?? 0) : 0;
+  const nowEntities = (result.stats as { entities?: number }).entities ?? 0;
+  const readAnomaly = prevEntities >= 10 && nowEntities < prevEntities * 0.5;
+  if (readAnomaly) {
+    line(`⚠️ READ ANOMALY: only ${nowEntities}/${prevEntities} entities parseable — Drive files likely not hydrated. Audit NOT stored; bundles NOT rebuilt.`);
+  } else {
+    q.insertAudit(wsId, result.findings, result.stats);
+    line(`audit: ${errors} error(s), ${warns} warning(s), ${stale.length} stale`);
+  }
 
-  // 3. bundles — rebuild only when something actually changed
+  // 3. bundles — rebuild only when something actually changed AND reads are sane
   const bundles = await listBundlesSvc(wsId);
-  if (drift > 0) {
+  if (drift > 0 && !readAnomaly) {
     for (const b of bundles) {
       try {
         await refreshBundleSvc(wsId, b.id);
@@ -86,6 +99,9 @@ async function maintain(wsId: number): Promise<void> {
     `> excluded from sync, review, and bundles.`,
     ``,
     `## Needs you`,
+    ...(readAnomaly
+      ? [`- ⚠️ **Read anomaly this run** — the Drive looked largely unreadable (sync/hydration). Figures below are suspect; the next clean run self-corrects.`]
+      : []),
     queue.items.length
       ? `- **${queue.items.length} change(s) await your review** → open the app's Review page.`
       : `- Review queue is clear.`,
