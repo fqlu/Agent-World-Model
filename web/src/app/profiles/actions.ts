@@ -54,10 +54,10 @@ function parseSettings(fd: FormData): ProfileSettings {
     journal: folderName("Journal", str(fd, "journal"), true)!,
     templates: folderName("Templates", str(fd, "templates"), true)!,
     archive: folderName("Archive", str(fd, "archive"), true)!,
-    context: folderName("Context", str(fd, "context"), false),
+    proposals: folderName("Proposals", str(fd, "proposals"), false),
     entities: folderName("Entities", str(fd, "entities"), false),
   };
-  const names = [...areas, topology.journal, topology.templates, topology.archive, topology.context, topology.entities].filter(Boolean);
+  const names = [...areas, topology.journal, topology.templates, topology.archive, topology.proposals, topology.entities].filter(Boolean);
   const dup = names.find((n, i) => names.indexOf(n) !== i);
   if (dup) throw new ProfileError(`"${dup}" is used for more than one folder.`);
 

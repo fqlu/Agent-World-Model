@@ -1,15 +1,14 @@
-import YAML from "yaml";
 import { Connector, parentPath, baseName } from "./connector";
 import { loadManifest, loadTemplate } from "./spec";
-import { parseWorkspaceYaml, allowedForms, checkPipeName, splitPipe, separatorOf, Mounts } from "./workspace";
+import { allowedForms, checkPipeName, splitPipe, separatorOf, Mounts } from "./workspace";
+import { readDeclInfo, resolveMounts, versionToProtocol } from "./config";
 import { Op } from "./ops";
 import { runAudit, Finding } from "./linter";
 import {
   ScaffoldOptions,
   defaultTopology,
-  renderWorkspaceYaml,
   renderAgentsMd,
-  renderRootOverview,
+  TEMPLATE_FILES,
 } from "./scaffold";
 
 const WIP_SUFFIX = "WIP Notes";
@@ -52,109 +51,85 @@ export async function buildAdoptionPlan(
 
   // --- Pass 1: bootstrap ---
   let mounts: Mounts;
-  const existingDecl = await c.read(manifest.workspace.manifest_file);
-  const decl = existingDecl ? parseWorkspaceYaml(existingDecl) : null;
+  const info = await readDeclInfo(c);
+  if (info.source === "workspace-yaml") {
+    notes.push(
+      "This workspace uses the v0.15 layout (_Workspace.yaml). Run \"Migrate to v0.16\" instead of a repair — it moves the config into AGENTS.md and archives the old protocol files.",
+    );
+    return { ops, notes, manual };
+  }
+  const decl = info.decl;
   const declared = Boolean(decl?.mounts?.areas?.length);
 
   if (declared) {
-    mounts = {
-      areas: decl!.mounts!.areas!,
-      journal: decl!.mounts!.journal ?? "Journal",
-      templates: decl!.mounts!.templates ?? "Templates",
-      archive: decl!.mounts!.archive ?? "Archive",
-      context: decl!.mounts!.context,
-      entities: decl!.mounts!.entities,
-    };
-    notes.push("Existing _Workspace.yaml found — using its declared topology.");
-    if (decl!.spec_version && String(decl!.spec_version) !== manifest.spec_version) {
-      const doc = YAML.parse(existingDecl!) as Record<string, unknown>;
-      doc.spec_version = manifest.spec_version;
-      ops.push({
-        action: "write",
-        path: manifest.workspace.manifest_file,
-        content: YAML.stringify(doc),
-        overwrite: true,
-        note: `Upgrade declared spec version ${decl!.spec_version} → ${manifest.spec_version} (topology and other settings preserved)`,
-        selected: true,
-      });
+    mounts = resolveMounts(decl);
+    notes.push("Config header found in AGENTS.md — using its declared topology.");
+    const header = { ...(info.raw ?? {}) };
+    const wanted = versionToProtocol(manifest.spec_version);
+    if (header.protocol !== wanted) {
+      notes.push(`Upgrading declared protocol ${String(header.protocol)} → ${wanted}.`);
+      header.protocol = wanted;
     }
+    ops.push({
+      action: "write",
+      path: "AGENTS.md",
+      content: renderAgentsMd(
+        { ...opts, ownerName: decl?.owner?.name ?? opts.ownerName, ownerEmail: decl?.owner?.email ?? opts.ownerEmail },
+        mounts,
+        decl,
+        header,
+      ),
+      overwrite: true,
+      note: "Re-render AGENTS.md from its config header + spec + profile",
+      selected: true,
+    });
   } else {
     const find = (re: RegExp) => rootFolders.find((f) => re.test(f.name))?.name;
-    const journal = find(/journal/i) ?? "Journal";
-    const templates = find(/template/i) ?? "Templates";
-    const archive = find(/archive/i) ?? "Archive";
-    const context = find(/^_?context$/i) ?? "_Context";
-    const capabilityNames = new Set([journal, templates, archive, context]);
-    const areas = rootFolders.map((f) => f.name).filter((n) => !capabilityNames.has(n));
     const fallback = defaultTopology(opts.profile);
-    mounts = {
-      areas: areas.length ? areas : fallback.areas,
-      journal,
-      templates,
-      archive,
-      context,
-    };
+    const journal = find(/journal/i) ?? fallback.journal;
+    const templates = find(/template/i) ?? fallback.templates;
+    const archive = find(/archive/i) ?? fallback.archive;
+    const entities = find(/^_?entities$/i) ?? fallback.entities ?? "_Entities";
+    const proposals = find(/^_?proposals$/i) ?? fallback.proposals ?? "_Proposals";
+    const capabilityNames = new Set([journal, templates, archive, entities, proposals]);
+    const areas = rootFolders
+      .map((f) => f.name)
+      .filter((n) => !capabilityNames.has(n) && !n.startsWith("_"));
+    mounts = { areas: areas.length ? areas : fallback.areas, journal, templates, archive, entities, proposals };
     notes.push(
-      `Inferred topology — areas: [${mounts.areas.join(", ")}], journal: ${journal}, templates: ${templates}, archive: ${archive}. Edit _Workspace.yaml afterwards if this guess is wrong.`,
+      `Inferred topology — areas: [${mounts.areas.join(", ")}], journal: ${journal}, templates: ${templates}, archive: ${archive}. Edit the AGENTS.md config header afterwards if this guess is wrong.`,
     );
     ops.push({
       action: "write",
-      path: manifest.workspace.manifest_file,
-      content: renderWorkspaceYaml(opts, mounts),
-      note: "Declare the inferred topology in _Workspace.yaml",
+      path: "AGENTS.md",
+      content: renderAgentsMd(opts, mounts),
+      overwrite: true,
+      note: rootNames.has("AGENTS.md")
+        ? "Replace AGENTS.md with the protocol rulebook + config header (the old file is archived first)"
+        : "Write AGENTS.md: config header (inferred topology) + agent rulebook",
       selected: true,
     });
-  }
-
-  for (const m of [
-    ...mounts.areas,
-    mounts.journal,
-    mounts.templates,
-    mounts.archive,
-    ...(mounts.context ? [mounts.context] : []),
-  ]) {
-    if (!rootNames.has(m)) {
-      ops.push({ action: "mkdir", path: m, note: `Create missing mount "${m}"`, selected: true });
+    if (rootNames.has("AGENTS.md")) {
+      const old = await c.read("AGENTS.md");
+      if (old !== null) {
+        ops.unshift({
+          action: "write",
+          path: `${mounts.archive}/AGENTS.md`,
+          content: old,
+          note: "Archive the existing AGENTS.md before replacing it",
+          selected: true,
+        });
+      }
     }
   }
 
-  ops.push({
-    action: "write",
-    path: "AGENTS.md",
-    // Rebuild from the workspace's own declaration: its owner, house rules,
-    // rule overrides and conventions — not just the app-level defaults.
-    content: renderAgentsMd(
-      {
-        ...opts,
-        ownerName: decl?.owner?.name ?? opts.ownerName,
-        ownerEmail: decl?.owner?.email ?? opts.ownerEmail,
-      },
-      mounts,
-      decl,
-    ),
-    overwrite: true,
-    note: rootNames.has("AGENTS.md")
-      ? "Regenerate AGENTS.md from spec + profile + topology"
-      : "Generate the agent rulebook (AGENTS.md — auto-discovered by agentic tools)",
-    selected: true,
-  });
-  if (!rootNames.has("_Overview.md")) {
-    ops.push({
-      action: "write",
-      path: "_Overview.md",
-      content: renderRootOverview(opts, mounts),
-      note: "Create the root overview",
-      selected: true,
-    });
+  for (const m of [...mounts.areas, mounts.journal, mounts.templates, mounts.archive, mounts.entities, mounts.proposals]) {
+    if (m && !rootNames.has(m)) {
+      ops.push({ action: "mkdir", path: m, note: `Create missing folder "${m}"`, selected: true });
+    }
   }
 
-  const templateFiles: Array<{ spec: string; workspace: string }> = [
-    { spec: "_Overview.md", workspace: "_Overview Template.md" },
-    { spec: "WIP Note.md", workspace: "WIP Note Template.md" },
-    { spec: "Daily Journal.md", workspace: "Daily Journal Template.md" },
-    { spec: "_Tasks.md", workspace: "_Tasks Template.md" },
-  ];
-  for (const t of templateFiles) {
+  for (const t of TEMPLATE_FILES) {
     const p = `${mounts.templates}/${t.workspace}`;
     if (!(await c.exists(p))) {
       ops.push({
@@ -169,7 +144,7 @@ export async function buildAdoptionPlan(
 
   // Entity overviews (the only mandatory context anchor) + naming repairs
   // for promoted scopes and collections. Content folders are left alone.
-  const ctxName = mounts.context ?? "_Context";
+  const ctxName = "_Context"; // legacy context dirs are never entities
   for (const area of mounts.areas) {
     if (!rootNames.has(area)) continue;
     for (const entity of await c.list(area)) {
@@ -198,7 +173,6 @@ export async function buildAdoptionPlan(
         case "ST-001":
         case "ST-002":
         case "ST-003":
-        case "ST-005":
         case "SC-001":
         case "NM-001":
           break;
@@ -211,7 +185,7 @@ export async function buildAdoptionPlan(
             to: `${mounts.archive}/${f.path}`,
             note: isLegacyRulebook
               ? "Archive legacy _PROTOCOL.md — replaced by AGENTS.md in spec v0.5"
-              : `Archive undeclared root item "${f.path}" (alternatives: move it into a scope, or declare it as a mount in _Workspace.yaml)`,
+              : `Archive undeclared root item "${f.path}" (alternatives: move it into a scope, or declare it as a mount in the AGENTS.md config)`,
             selected: isLegacyRulebook,
             risky: !isLegacyRulebook,
           });

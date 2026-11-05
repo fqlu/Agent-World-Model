@@ -1,5 +1,5 @@
 import { Connector } from "./connector";
-import { loadTemplate } from "./spec";
+import { readDecl, resolveMounts } from "./config";
 
 // The full vocabulary of structural change. There is deliberately no delete.
 export type Op = {
@@ -11,6 +11,7 @@ export type Op = {
   note: string; // human-readable explanation shown in the review UI
   selected: boolean; // default selection state in the review UI
   risky?: boolean; // rendered with a warning; default-unselected
+  noCascade?: boolean; // move only: skip rewriting references (bulk migrations do their own)
 };
 
 export type OpResult = { op: Op; ok: boolean; error?: string; skipped?: boolean };
@@ -39,10 +40,12 @@ export async function applyOps(
         // SPEC §8: renames MUST propagate. Rewrite references to the old path
         // in entity relations/sources and context-group members — otherwise a
         // repair rename orphans every edge that pointed at the folder.
-        try {
-          await cascadeRefs(c, op.path, op.to);
-        } catch {
-          /* cascade is best-effort; the move itself stands */
+        if (!op.noCascade) {
+          try {
+            await cascadeRefs(c, op.path, op.to);
+          } catch {
+            /* cascade is best-effort; the move itself stands */
+          }
         }
       }
       results.push({ op, ok: true });
@@ -54,13 +57,12 @@ export async function applyOps(
 }
 
 // Rewrite exact-path references after a move/rename: entity files (relation
-// targets, source resources) and root context-group member paths. Substring
-// replacement of the full old path is safe — workspace paths are specific.
+// targets, source resources) and legacy root context-group member paths.
+// Substring replacement of the full old path is safe — workspace paths are specific.
 async function cascadeRefs(c: Connector, from: string, to: string): Promise<void> {
-  const decl = await c.read("_Workspace.yaml");
-  const entMount = decl?.match(/entities:\s*(\S+)/)?.[1] ?? "_Entities";
-  const ctxMount = decl?.match(/context:\s*(\S+)/)?.[1] ?? "_Context";
-  for (const dir of [entMount, ctxMount]) {
+  const decl = await readDecl(c);
+  const m = resolveMounts(decl);
+  for (const dir of [m.entities, m.context].filter((x): x is string => Boolean(x))) {
     if (!(await c.exists(dir))) continue;
     for (const e of await c.list(dir)) {
       if (e.kind !== "file" || !e.name.endsWith(".md")) continue;
@@ -71,8 +73,9 @@ async function cascadeRefs(c: Connector, from: string, to: string): Promise<void
   }
 }
 
-// Append an attributed line to today's journal (creating the day file from the
-// template if needed) — the transparency contract from SPEC §7.3.
+// Append an attributed line to today's journal (creating the day file if
+// needed) — the transparency contract from SPEC §7.3. v0.16: the journal is a
+// log only, so a new day file is just a title and the Agent activity heading.
 export async function journalAgentActivity(
   c: Connector,
   journalMount: string,
@@ -92,18 +95,7 @@ export async function journalAgentActivity(
   const heading = "## Agent activity";
   let md = await c.read(path);
   if (md === null) {
-    md = loadTemplate("Daily Journal.md")
-      .replace(/^# YYYY-MM-DD/m, `# ${day}`)
-      .split("\n")
-      // drop placeholder client sections from the template for generated files
-      .filter(
-        (l) =>
-          !l.startsWith("## [") &&
-          !l.startsWith("- [One-line") &&
-          !l.startsWith("- HH:MM") &&
-          l.trim() !== "- ...",
-      )
-      .join("\n");
+    md = `# ${day}\n\n${heading}\n`;
   }
   if (md.includes(heading)) {
     const lines = md.split("\n");
@@ -112,6 +104,8 @@ export async function journalAgentActivity(
     for (let i = idx + 1; i < lines.length; i++) {
       if (lines[i].startsWith("## ")) { insertAt = i; break; }
     }
+    // append right after the section's last non-blank line
+    while (insertAt > idx + 1 && lines[insertAt - 1].trim() === "") insertAt--;
     lines.splice(insertAt, 0, line);
     md = lines.join("\n");
   } else {

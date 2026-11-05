@@ -8,6 +8,8 @@ import {
   removeWorkspaceAction,
 } from "@/app/actions";
 import type { AuditStats } from "@/lib/linter";
+import { connectorFor } from "@/lib/hub";
+import { readDecl } from "@/lib/config";
 import SyncPanel from "./sync-panel";
 import LocalTime from "@/app/local-time";
 import RemoveWorkspace from "./remove-workspace";
@@ -28,6 +30,13 @@ export default async function WorkspacePage({ params }: { params: Promise<{ id: 
   const runAudit = runAuditAction.bind(null, ws.id);
   const proposeScaffold = createProposalAction.bind(null, ws.id, "scaffold" as const);
   const proposeAdopt = createProposalAction.bind(null, ws.id, "adopt" as const);
+  const proposeMigrate = createProposalAction.bind(null, ws.id, "migrate" as const);
+  let layout: "v0.16" | "v0.15" | null = null;
+  try {
+    layout = (await readDecl(connectorFor(ws)))?.layout ?? null;
+  } catch {
+    /* workspace unreachable — the panels below show their own errors */
+  }
 
   return (
     <div className="space-y-8">
@@ -49,7 +58,36 @@ export default async function WorkspacePage({ params }: { params: Promise<{ id: 
         </p>
       </div>
 
+      {layout === "v0.15" && (
+        <form action={proposeMigrate} className="card flex flex-wrap items-center gap-3 border-amber-300 bg-amber-50 p-4">
+          <span className="flex-1 text-sm text-amber-900">
+            <strong>This workspace uses protocol v0.15.</strong> v0.16 moves the config into the
+            AGENTS.md header, retires generated files, turns context groups into facets and
+            simplifies relationships. The migration is one reviewable plan; originals are archived,
+            nothing is deleted.
+          </span>
+          <button className="btn-primary">Migrate to v0.16</button>
+        </form>
+      )}
+
       <SyncPanel wsId={ws.id} />
+
+      <Link
+        href={`/w/${ws.id}/inbox`}
+        className="card flex items-center gap-3 border-violet-200 p-4 transition hover:border-violet-400"
+      >
+        <span className="flex h-8 w-8 items-center justify-center rounded-full bg-violet-600 text-sm font-bold text-white">
+          ☾
+        </span>
+        <span>
+          <span className="font-semibold text-zinc-900">Dreaming inbox</span>
+          <span className="block text-xs text-zinc-500">
+            Questions and proposed fixes from the dreaming agent: triage (dates, outcomes, slipped
+            plans) and hygiene (drift, protocol). Accept, edit, reject or answer.
+          </span>
+        </span>
+        <span className="ml-auto text-violet-600">→</span>
+      </Link>
 
       <Link
         href={`/w/${ws.id}/review`}
@@ -158,24 +196,16 @@ export default async function WorkspacePage({ params }: { params: Promise<{ id: 
             <span className="flex h-6 w-6 items-center justify-center rounded-full bg-indigo-600 text-xs font-bold text-white">
               3
             </span>
-            <h2 className="font-semibold text-zinc-900">Context groups</h2>
+            <h2 className="font-semibold text-zinc-900">{layout === "v0.15" ? "Context groups" : "Facets"}</h2>
           </div>
           <p className="mt-2 text-xs text-zinc-500">
-            Wire folders into named groups agents read to resolve associations. Subfolders
-            inherit.
+            {layout === "v0.15"
+              ? "Legacy (v0.15): named folder groups. Migrate to turn them into facets."
+              : "Cross-cutting views (pillars, platforms, disciplines, brands): facet entities that scopes list in facets:. Child scopes inherit."}
           </p>
-          <div className="mt-3 flex-1 text-sm">
-            {latest ? (
-              <p>
-                <span className="text-lg font-semibold text-zinc-900">{latest.groups ?? 0}</span>{" "}
-                <span className="text-xs text-zinc-500">group(s) as of last audit</span>
-              </p>
-            ) : (
-              <p className="text-zinc-400">Audit first to see group counts.</p>
-            )}
-          </div>
+          <div className="mt-3 flex-1 text-sm" />
           <Link href={`/w/${ws.id}/context`} className="btn-primary mt-4 w-full justify-center">
-            Open context canvas
+            {layout === "v0.15" ? "Open context canvas" : "View facets"}
           </Link>
         </div>
 
@@ -188,7 +218,7 @@ export default async function WorkspacePage({ params }: { params: Promise<{ id: 
             <h2 className="font-semibold text-zinc-900">Entities</h2>
           </div>
           <p className="mt-2 text-xs text-zinc-500">
-            The cast of the world model — people, systems, concepts as nodes agents resolve.
+            The cast of the world model — people, organizations, systems, concepts as nodes agents resolve.
             Seeded by extracting from your overviews.
           </p>
           <div className="mt-3 flex-1 text-sm">
@@ -217,14 +247,16 @@ export default async function WorkspacePage({ params }: { params: Promise<{ id: 
         <p className="flex-1 text-xs text-zinc-500">
           Audits are read-only. Proposals are plans — nothing changes until you review and apply
           them, and applying never deletes (renames and archive moves only). Every applied change
-          is journaled. <code className="font-mono">_Index.md</code> (the agent/RAG map) refreshes
-          automatically after applies and context saves.
+          is journaled. The workspace map and world model are computed by the app on demand —
+          nothing generated is stored in the Drive.
         </p>
-        <form action={regenerateIndexAction.bind(null, ws.id)}>
-          <button className="text-xs text-indigo-600 hover:underline">
-            Regenerate _Index.md now
-          </button>
-        </form>
+        {layout === "v0.15" && (
+          <form action={regenerateIndexAction.bind(null, ws.id)}>
+            <button className="text-xs text-indigo-600 hover:underline">
+              Regenerate _Index.md now (legacy)
+            </button>
+          </form>
+        )}
       </div>
 
       <section className="grid gap-8 sm:grid-cols-2">

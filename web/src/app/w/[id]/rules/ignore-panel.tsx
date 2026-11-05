@@ -33,7 +33,7 @@ export default function IgnorePanel({ wsId, initial }: { wsId: number; initial: 
       setSaved(body.ignore);
       setStatus({
         ok: true,
-        text: "Saved to _Workspace.yaml; AGENTS.md regenerated. Re-run the audit to see the effect.",
+        text: "Saved to the AGENTS.md config header; the rulebook re-rendered. Re-run the audit to see the effect.",
       });
     } catch (e) {
       setStatus({ ok: false, text: e instanceof Error ? e.message : String(e) });
@@ -50,7 +50,7 @@ export default function IgnorePanel({ wsId, initial }: { wsId: number; initial: 
           Folders or files outside the protocol — e.g. a code repo or a tool&apos;s output folder.
           Everything below an ignored path is skipped by the audit, Adopt, the index, the world
           model and exports. Stored under <code className="font-mono">ignore:</code> in this
-          workspace&apos;s <code className="font-mono">_Workspace.yaml</code>, so it travels with
+          workspace&apos;s <code className="font-mono">AGENTS.md</code> config header, so it travels with
           the workspace.
         </p>
       </div>

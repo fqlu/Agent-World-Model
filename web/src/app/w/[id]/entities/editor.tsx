@@ -2,9 +2,9 @@
 
 import { useCallback, useMemo, useState } from "react";
 
-type EntityKind = "person" | "system" | "concept";
+type EntityKind = "person" | "organization" | "system" | "concept";
 type Attr = Record<string, string>;
-type Relation = { predicate: string; target: string; note?: string };
+type Relation = { predicate: string; target: string; as?: string; since?: string; until?: string; note?: string };
 type Entity = {
   slug: string;
   name: string;
@@ -34,11 +34,13 @@ type Candidate = {
 
 const KIND_LABEL: Record<EntityKind, string> = {
   person: "People",
+  organization: "Organizations",
   system: "Systems",
   concept: "Concepts",
 };
 const KIND_BADGE: Record<EntityKind, string> = {
   person: "bg-emerald-100 text-emerald-700",
+  organization: "bg-amber-100 text-amber-800",
   system: "bg-sky-100 text-sky-700",
   concept: "bg-violet-100 text-violet-700",
 };
@@ -116,7 +118,7 @@ export default function EntitiesEditor({
   const clearFilters = () => { setSearch(""); setFKind("all"); setFOrg("all"); setFClient("all"); setFProv("all"); };
 
   const grouped = useMemo(() => {
-    const g: Record<EntityKind, Entity[]> = { person: [], system: [], concept: [] };
+    const g: Record<EntityKind, Entity[]> = { person: [], organization: [], system: [], concept: [] };
     for (const e of filtered) g[e.kind].push(e);
     return g;
   }, [filtered]);
@@ -394,7 +396,7 @@ export default function EntitiesEditor({
           No entities match these filters. <button onClick={clearFilters} className="text-indigo-600 hover:underline">Clear filters</button>
         </p>
       ) : (
-        (["person", "system", "concept"] as EntityKind[]).map((kind) =>
+        (["person", "organization", "system", "concept"] as EntityKind[]).map((kind) =>
           grouped[kind].length ? (
             <section key={kind}>
               <h2 className="flex items-center gap-2 text-sm font-semibold text-zinc-900">
@@ -436,13 +438,9 @@ export default function EntitiesEditor({
                             <div className="flex items-center justify-between">
                               <span className="text-xs font-medium text-zinc-600">
                                 Relationships{" "}
-                                <a
-                                  href={`/w/${wsId}/rules`}
-                                  className="font-normal text-indigo-500 hover:underline"
-                                  title="Add or remove predicates on the Rules page"
-                                >
-                                  (edit vocabulary)
-                                </a>
+                                <span className="font-normal text-zinc-400" title="member-of = part of the target; related-to = anything else, described in “as”">
+                                  (member-of / related-to + “as”)
+                                </span>
                               </span>
                               <button
                                 onClick={() => addRelation(idx)}
@@ -490,6 +488,28 @@ export default function EntitiesEditor({
                                         <option value={r.target}>{r.target} (unresolved)</option>
                                       )}
                                     </select>
+                                    <input
+                                      value={r.as ?? ""}
+                                      onChange={(ev) =>
+                                        updateRelation(idx, rIdx, { as: ev.target.value || undefined })
+                                      }
+                                      placeholder={r.predicate === "related-to" ? "as (required) e.g. uses as CDP" : "as e.g. lead"}
+                                      className={`w-40 rounded border bg-white px-1 py-0.5 text-xs ${r.predicate === "related-to" && !r.as ? "border-amber-400" : "border-zinc-300"}`}
+                                    />
+                                    <input
+                                      value={r.since ?? ""}
+                                      onChange={(ev) => updateRelation(idx, rIdx, { since: ev.target.value || undefined })}
+                                      placeholder="since"
+                                      title="since (YYYY-MM-DD, optional)"
+                                      className="w-20 rounded border border-zinc-300 bg-white px-1 py-0.5 text-xs"
+                                    />
+                                    <input
+                                      value={r.until ?? ""}
+                                      onChange={(ev) => updateRelation(idx, rIdx, { until: ev.target.value || undefined })}
+                                      placeholder="until"
+                                      title="until (YYYY-MM-DD, optional; past = former relationship)"
+                                      className="w-20 rounded border border-zinc-300 bg-white px-1 py-0.5 text-xs"
+                                    />
                                     <input
                                       value={r.note ?? ""}
                                       onChange={(ev) =>

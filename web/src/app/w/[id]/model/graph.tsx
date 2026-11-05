@@ -14,23 +14,24 @@ import "@xyflow/react/dist/style.css";
 
 type ModelNode = {
   id: string;
-  kind: "person" | "system" | "concept" | "scope";
+  kind: "person" | "organization" | "system" | "concept" | "scope";
   label: string;
   attributes?: Record<string, string>;
 };
-type ModelEdge = { from: string; to: string; predicate: string; note?: string };
+type ModelEdge = { from: string; to: string; predicate: string; as?: string; until?: string; note?: string };
 type WorldModel = { nodes: ModelNode[]; edges: ModelEdge[] };
 
-type VKind = "person" | "system" | "concept" | "scope" | "group";
+type VKind = "person" | "organization" | "system" | "concept" | "scope" | "group";
 
 const NODE_STYLE: Record<VKind, React.CSSProperties> = {
   person: { background: "#d1fae5", border: "1px solid #059669", color: "#065f46" },
+  organization: { background: "#fef9c3", border: "1px solid #ca8a04", color: "#713f12" },
   system: { background: "#e0f2fe", border: "1px solid #0284c7", color: "#075985" },
   concept: { background: "#ede9fe", border: "1px solid #7c3aed", color: "#5b21b6" },
   group: { background: "#fef3c7", border: "1px solid #d97706", color: "#92400e" },
   scope: { background: "#ffffff", border: "1px solid #d4d4d8", color: "#18181b" },
 };
-const COLUMN: Record<VKind, number> = { scope: 0, person: 1, system: 2, concept: 3, group: 4 };
+const COLUMN: Record<VKind, number> = { scope: 0, person: 1, organization: 2, system: 3, concept: 4, group: 5 };
 
 function vkind(n: ModelNode): VKind {
   if (n.id.startsWith("group:")) return "group";
@@ -44,7 +45,7 @@ function clientKey(scopeId: string): { key: string; label: string } | null {
   return { key: `${segs[0]}/${segs[1]}`, label: segs[1] };
 }
 
-const ALL_KINDS: VKind[] = ["person", "system", "concept", "group", "scope"];
+const ALL_KINDS: VKind[] = ["person", "organization", "system", "concept", "group", "scope"];
 
 export default function ModelGraph({ model }: { model: WorldModel }) {
   const [focus, setFocus] = useState("all"); // "all" | "client:<key>" | "group:<id>"
@@ -125,15 +126,16 @@ export default function ModelGraph({ model }: { model: WorldModel }) {
           id: `e${i}`,
           source: e.from,
           target: e.to,
-          label: e.predicate,
+          // v0.16: the description (`as`) is the edge label; "former" when until has passed
+          label: `${e.as ?? e.predicate}${e.until && e.until < new Date().toISOString().slice(0, 10) ? " (former)" : ""}`,
           labelStyle: { fontSize: 10, fill: "#52525b" },
           labelBgStyle: { fill: "#f4f4f5" },
           style: {
-            stroke: e.predicate === "in-group" ? "#a1a1aa" : "#6366f1",
+            stroke: e.predicate === "in-group" || e.predicate === "facet" ? "#a1a1aa" : "#6366f1",
             strokeWidth: 1.5,
-            strokeDasharray: e.predicate === "in-group" ? "4 3" : undefined,
+            strokeDasharray: e.predicate === "in-group" || e.predicate === "facet" ? "4 3" : undefined,
           },
-          markerEnd: { type: MarkerType.ArrowClosed, color: e.predicate === "in-group" ? "#a1a1aa" : "#6366f1" },
+          markerEnd: { type: MarkerType.ArrowClosed, color: e.predicate === "in-group" || e.predicate === "facet" ? "#a1a1aa" : "#6366f1" },
         })),
     [model.edges, visibleIds],
   );

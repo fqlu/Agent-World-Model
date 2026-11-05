@@ -46,14 +46,20 @@ export const PROFILE_TEMPLATES: Array<{ file: string; usedFor: string }> = [
       "Installed as “_Overview Template.md”, and the body of new scope overviews created during adoption.",
   },
   { file: "WIP Note.md", usedFor: "Installed as “WIP Note Template.md”." },
-  { file: "Daily Journal.md", usedFor: "Installed as “Daily Journal Template.md”." },
   { file: "_Tasks.md", usedFor: "Installed as “_Tasks Template.md”." },
+  { file: "Entity.md", usedFor: "Installed as “Entity Template.md”." },
 ];
 
 // AGENTS.md is rendered by scaffold.renderAgentsMd, which fills these.
 export const AGENTS_PLACEHOLDERS: Array<{ token: string; meaning: string }> = [
-  { token: "{{spec_version}}", meaning: "protocol version (audit ST-005 expects it)" },
-  { token: "{{profile}}", meaning: "profile name (audit ST-005 expects it)" },
+  { token: "{{spec_version}}", meaning: "protocol version (from the header's `protocol`)" },
+  { token: "{{profile}}", meaning: "profile name" },
+  { token: "{{about}}", meaning: "the header's one-line `about`" },
+  { token: "{{journal}}", meaning: "journal mount name" },
+  { token: "{{templates}}", meaning: "templates mount name" },
+  { token: "{{archive}}", meaning: "archive mount name" },
+  { token: "{{entities}}", meaning: "entities mount name" },
+  { token: "{{proposals}}", meaning: "proposals mount name" },
   { token: "{{owner_name}}", meaning: "workspace owner's name" },
   { token: "{{owner_email}}", meaning: "workspace owner's email" },
   { token: "{{map}}", meaning: "the declared folder topology" },
@@ -149,10 +155,11 @@ export function baselineProfile(): ProfileDef {
   return {
     default_topology: b?.default_topology ?? {
       areas: ["Projects"],
-      journal: "Journal",
-      templates: "Templates",
+      journal: "_Journal",
+      templates: "_Templates",
       archive: "Archive",
-      context: "_Context",
+      entities: "_Entities",
+      proposals: "_Proposals",
     },
     root_file_allowance: b?.root_file_allowance ?? [],
   };

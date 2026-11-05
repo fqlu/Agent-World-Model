@@ -95,7 +95,7 @@ export default function SyncPanel({ wsId }: { wsId: number }) {
 
       <p className="mt-2 text-xs text-zinc-500">
         Detects what changed in the Drive since the last sync, refreshes{" "}
-        <code className="font-mono">_Index.md</code> + <code className="font-mono">_Model.json</code>,
+        the map and world model (computed views; legacy v0.15 workspaces also get <code className="font-mono">_Index.md</code> + <code className="font-mono">_Model.json</code>),
         and hands you a reflection scaffold to give an agent. Detection is read-only; nothing is
         deleted.
       </p>

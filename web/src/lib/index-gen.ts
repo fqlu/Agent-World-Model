@@ -1,6 +1,6 @@
 import { Connector } from "./connector";
-import { loadManifest } from "./spec";
-import { parseWorkspaceYaml, sectionLines } from "./workspace";
+import { sectionLines } from "./workspace";
+import { readDecl, resolveMounts } from "./config";
 import { parseGroupFile, ContextGroup, DEFAULT_CONTEXT_DIR } from "./context";
 import { listEntities, Entity } from "./entities";
 
@@ -26,18 +26,9 @@ function enc(p: string): string {
 }
 
 export async function buildIndexMd(c: Connector, workspaceName: string): Promise<string | null> {
-  const manifest = loadManifest();
-  const raw = await c.read(manifest.workspace.manifest_file);
-  const decl = raw ? parseWorkspaceYaml(raw) : null;
+  const decl = await readDecl(c);
   if (!decl?.mounts?.areas?.length) return null;
-
-  const mounts = {
-    areas: decl.mounts.areas!,
-    journal: decl.mounts.journal ?? "Journal",
-    templates: decl.mounts.templates ?? "Templates",
-    archive: decl.mounts.archive ?? "Archive",
-    context: decl.mounts.context,
-  };
+  const mounts = resolveMounts(decl);
   const ctxName = mounts.context ?? DEFAULT_CONTEXT_DIR;
   const scopesByArea = new Map<string, ScopeEntry[]>();
   const groups: GroupEntry[] = [];
@@ -177,7 +168,11 @@ export async function buildIndexMd(c: Connector, workspaceName: string): Promise
   return out.join("\n");
 }
 
+// v0.16 (SPEC §6.5): the map is a tooling view, never stored in the Drive.
+// Only legacy v0.15 workspaces still get an _Index.md file.
 export async function writeIndex(c: Connector, workspaceName: string): Promise<boolean> {
+  const decl = await readDecl(c);
+  if (decl?.layout !== "v0.15") return false;
   const md = await buildIndexMd(c, workspaceName);
   if (md === null) return false;
   await c.write("_Index.md", md, { overwrite: true });

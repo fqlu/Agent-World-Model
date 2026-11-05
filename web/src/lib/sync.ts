@@ -1,9 +1,6 @@
 import crypto from "node:crypto";
 import { Connector } from "./connector";
-import { parseWorkspaceYaml } from "./workspace";
-import { writeIndex } from "./index-gen";
-import { writeModel } from "./model-gen";
-import { journalAgentActivity } from "./ops";
+import { readMounts } from "./config";
 
 // The maintenance loop (SPEC §6.9). Deterministic detection only — the app
 // notices drift and re-derives projections; an agent does the reflection.
@@ -17,7 +14,7 @@ export type SyncReport = {
   changed: number;
 };
 
-// Derived artifacts are excluded so the loop never flags its own output.
+// Derived artifacts (legacy v0.15 files) are excluded so the loop never flags its own output.
 const EXCLUDE_FILES = new Set(["_Index.md", "_Model.json", "_Digest.md"]);
 
 function hashText(s: string): string {
@@ -25,9 +22,7 @@ function hashText(s: string): string {
 }
 
 async function archiveMount(c: Connector): Promise<string> {
-  const raw = await c.read("_Workspace.yaml");
-  const decl = raw ? parseWorkspaceYaml(raw) : null;
-  return decl?.mounts?.archive ?? "Archive";
+  return (await readMounts(c)).archive;
 }
 
 export async function buildManifest(c: Connector): Promise<Manifest> {
@@ -92,8 +87,8 @@ export function reflectionScaffold(diff: SyncDiff, syncedAt: string | null): str
     ``,
     `Review the changed files below and propose world-model updates through the`,
     `app's normal flows — new/changed **entities** and **relationships**, updated`,
-    `scope **overviews** (Active workstreams, Recent activity), and **context`,
-    `group** membership. Do not invent facts; ground each update in a changed file.`,
+    `scope **overviews** (Active workstreams, Recent activity), and scope **facets**.`,
+    `Do not invent facts; ground each update in a changed file.`,
     section("Modified", diff.modified),
     section("Added", diff.added),
     section("Removed", diff.removed),

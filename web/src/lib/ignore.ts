@@ -1,13 +1,23 @@
 import { Connector, Entry } from "./connector";
-import { parseWorkspaceYaml } from "./workspace";
+import { parseWorkspaceYaml, parseFrontmatter } from "./workspace";
 
 // Workspace ignore list (SPEC §2): paths declared under `ignore:` in the
-// workspace's own _Workspace.yaml — so the setting travels with the knowledge
+// workspace's own config (AGENTS.md header; legacy: _Workspace.yaml) — so the setting travels with the knowledge
 // layer, not the app. An ignored folder and everything below it is invisible
 // to every tool built on a Connector: audit, adopt, index/model generation,
 // entities, sync, exports.
 
-const MANIFEST = "_Workspace.yaml";
+const CONFIG_FILES = new Set(["AGENTS.md", "_Workspace.yaml"]);
+
+async function readIgnore(c: Connector): Promise<string[]> {
+  const agents = await c.read("AGENTS.md");
+  if (agents !== null) {
+    const { data } = parseFrontmatter(agents);
+    if ("protocol" in data || "mounts" in data) return normalizeIgnoreList(data.ignore);
+  }
+  const raw = await c.read("_Workspace.yaml");
+  return normalizeIgnoreList(raw ? parseWorkspaceYaml(raw)?.ignore : []);
+}
 
 // Workspace-relative, '/'-separated, no leading/trailing slashes (a leading
 // '/' means the workspace root). Returns null for anything that escapes it.
@@ -42,10 +52,7 @@ export class IgnoringConnector implements Connector {
   constructor(private inner: Connector) {}
 
   private load(): Promise<string[]> {
-    this.ignore ??= this.inner
-      .read(MANIFEST)
-      .then((raw) => normalizeIgnoreList(raw ? parseWorkspaceYaml(raw)?.ignore : []))
-      .catch(() => []);
+    this.ignore ??= readIgnore(this.inner).catch(() => []);
     return this.ignore;
   }
 
@@ -65,7 +72,7 @@ export class IgnoringConnector implements Connector {
 
   async write(path: string, content: string, opts?: { overwrite?: boolean }) {
     await this.inner.write(path, content, opts);
-    if (path === MANIFEST) this.ignore = null; // pick up an edited list
+    if (CONFIG_FILES.has(path)) this.ignore = null; // pick up an edited list
   }
 
   mkdir(path: string) {

@@ -8,7 +8,7 @@ export async function POST(
 ) {
   const { id } = await params;
   const body = await req.json().catch(() => ({}));
-  const kind = body?.kind === "scaffold" ? "scaffold" : "adopt";
+  const kind = body?.kind === "scaffold" ? "scaffold" : body?.kind === "migrate" ? "migrate" : "adopt";
   try {
     const pid = await createProposalSvc(Number(id), kind);
     const proposal = q.getProposal(pid)!;

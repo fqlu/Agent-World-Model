@@ -9,7 +9,7 @@ export type SettingsInitial = {
   journal: string;
   templates: string;
   archive: string;
-  context: string;
+  proposals: string;
   entities: string;
   draftEnabled: boolean;
   workingPrefix: string;
@@ -61,7 +61,7 @@ export default function SettingsForm({
         <legend className="text-sm font-semibold text-zinc-900">Starter folder layout</legend>
         <p className="text-xs text-zinc-500">
           What scaffolding creates. A starting point, not a law: each workspace declares its real
-          layout in <span className="font-mono">_Workspace.yaml</span>.
+          layout in its <span className="font-mono">AGENTS.md</span> config header. Protocol folders start with “_”.
         </p>
         <label className="block text-sm font-medium text-zinc-700">
           Areas
@@ -82,8 +82,8 @@ export default function SettingsForm({
             <input name="archive" defaultValue={initial.archive} required className="input font-mono" />
           </label>
           <label className="block text-sm font-medium text-zinc-700">
-            Context <span className="font-normal text-zinc-400">(optional)</span>
-            <input name="context" defaultValue={initial.context} className="input font-mono" />
+            Proposals <span className="font-normal text-zinc-400">(optional)</span>
+            <input name="proposals" defaultValue={initial.proposals} className="input font-mono" />
           </label>
           <label className="block text-sm font-medium text-zinc-700">
             Entities <span className="font-normal text-zinc-400">(optional)</span>

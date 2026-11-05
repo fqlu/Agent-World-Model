@@ -1,32 +1,33 @@
 # Drive Context Protocol — machine-readable manifest
 # Mirrors SPEC.md §9. The linter consumes this file; SPEC.md is for humans.
-spec_version: 0.15.0
+# Changes since v0.15 are marked "v0.16" (see SPEC.md §13 for migration).
+spec_version: 0.16.0
 
-# Topology is declarative (SPEC §2): each workspace declares its own layout in
-# a root _Workspace.yaml; the linter validates against that declaration.
+# v0.16: the workspace's config lives in the YAML header of AGENTS.md. There is
+# no _Workspace.yaml, no root _Overview.md, and no generated files in the Drive.
 workspace:
-  manifest_file: _Workspace.yaml
-  rulebook_file: AGENTS.md             # cross-vendor agent auto-discovery standard
-  required_root_files: [_Workspace.yaml, AGENTS.md, _Overview.md]     # ST-001
-  optional_root_files: [_Index.md, _Model.json, _Digest.md]  # generated artifacts (§6.5, §6.8, §6.9), exempt from ST-004
-  required_capabilities: [journal, templates, archive]                # ST-003
-  optional_capabilities: [context, entities]                          # §6.4, §6.6
-  areas_min: 1                                                        # ST-003
-  protocol_synced_with_manifest: true                                 # ST-005
-  ignore_key: ignore               # optional list of paths outside the protocol (skipped by audit and all tree readers)
-  # undeclared root items -> ST-004 (warn); profiles may whitelist files
+  config_file: AGENTS.md                 # v0.16: YAML header = workspace config; body = rendered rulebook
+  config_location: frontmatter
+  required_root_files: [AGENTS.md]       # ST-001 (header must parse and carry the required keys)
+  required_header_keys: [protocol, owner, mounts]      # ST-001
+  optional_header_keys: [profile, about, ignore, rules, house_rules]
+  required_capabilities: [journal, templates, archive] # ST-003
+  optional_capabilities: [entities, proposals]         # v0.16: context removed; proposals added
+  areas_min: 1                                          # ST-003
+  ignore_key: ignore
+  generated_files_in_drive: false        # v0.16: index / model / digest are served by tooling, never stored
+  legacy_root_files: [_Workspace.yaml, _Overview.md, _Index.md, _Model.json, _Digest.md]  # v0.16: flagged by ST-004 with a migration hint
+  # undeclared root items -> ST-004 (warn); profiles may whitelist files (e.g. CLAUDE.md)
 
 scopes:
-  # Content by default (SPEC §3): a folder is a scope only if it contains the
-  # context file. Entities (depth-1 in an area) MUST be scopes; deeper folders
-  # are promoted by choice. Overview content is free-form; the sections below
-  # are recommendations read by tooling (index generator), not lint subjects.
   context_file: _Overview.md
   promotion: context_file_presence
-  entity_overview_required: true     # SC-001 (entities only)
+  entity_overview_required: true         # SC-001
   optional_files: [_Tasks.md]
-  scope_types: [workstream, project] # §3.1 decomposition — declared in _Overview.md frontmatter
-  scope_type_required_at_depth: 2    # DC-001 (warn) — the workstream/project level under an entity
+  scope_types: [workstream, project]     # §3.1, frontmatter `scope_type`
+  scope_type_required_at_depth: 2        # DC-001
+  facets_key: facets                     # v0.16: frontmatter list of entity slugs (replaces context groups)
+  facets_inherit: down                   # v0.16: a scope's effective facets = own + all ancestor scopes'
   recommended_sections:
     - "What it is"
     - "Active workstreams"
@@ -37,85 +38,86 @@ scopes:
 collections:
   wip_notes:
     suffix: " | WIP Notes"
-    file_pattern: '^\d{4}-\d{2}-\d{2}( - .+)?\.md$'   # CL-001 (v0.14: optional ' - Title' suffix)
+    file_pattern: '^\d{4}-\d{2}-\d{2}( - .+)?\.md$'   # CL-001
     template: "WIP Note.md"
-    required_sections: [Discussion, Decisions, Actions]   # CL-002, warn
+    required_sections: [Discussion, Decisions, Actions]   # CL-002
   journal:
-    # relative to the workspace's declared journal mount               # JR-001
-    path_pattern: '^\d{4}/\d{4}-\d{2}/\d{4}-\d{2}-\d{2}\.md$'
-    template: "Daily Journal.md"
+    path_pattern: '^\d{4}/\d{4}-\d{2}/\d{4}-\d{2}-\d{2}\.md$'   # JR-001, relative to the journal mount
+    log_only: true                       # v0.16: activity log; no daily index, no "Needs review" (use proposals)
     agent_activity_heading: "Agent activity"   # JR-003
+    line_format: "- HH:MM · <agent> · <scope> — <what> → [link]"
+    template: null                       # v0.16: no template file; the line format above is the whole spec
 
-context:
-  default_mount: "_Context"      # also the context DIRECTORY NAME at every level
-  per_folder: true               # any folder may hold a context directory
-  template: "Context Group.md"
-  required_frontmatter: [name, title, members]   # CX-001
-  members: descendant_folder_paths               # relative to declaring folder; CX-002
-  inheritance: down              # effective context = own + all ancestors'
-  placement: lowest_common_ancestor              # guidance, not lint-enforced
-  group_kinds: [group, pillar]   # §3.1 — a group MAY be a strategic pillar/theme (facet)
+proposals:                               # v0.16 — §6.10
+  default_mount: "_Proposals"
+  per_agent_folder: true                 # _Proposals/<agent>/
+  files:
+    proposals: '^\d{4}-\d{2}-\d{2}\.proposals\.json$'   # written by the proposing agent only
+    rendering: '^\d{4}-\d{2}-\d{2}\.md$'                # readable copy, written by the proposing agent only
+    decisions: '^\d{4}-\d{2}-\d{2}\.decisions\.json$'   # written by the owner's tooling only
+    suppressions: 'suppressions\.json'                  # written by the proposing agent only
+  schema: dcp-proposals/1
+  decisions_schema: dcp-decisions/1
+  single_writer: true                    # each file has exactly one writer
 
-entities:                        # §6.6 — the "cast" of the world model
-  default_mount: "_Entities"     # workspace-root registry, one file per entity
+entities:                                # §6.6
+  default_mount: "_Entities"
   template: "Entity.md"
-  kinds: [person, system, concept]
-  required_frontmatter: [name, kind]             # EN-001
-  provenance: [source, confirmed]                # derived|asserted, last-confirmed date
-  derive_first: true             # extracted from overviews; human confirms/enriches
+  kinds: [person, organization, system, concept]   # v0.16: organization added
+  required_frontmatter: [name, kind]     # EN-001
+  provenance: [source, confirmed]
+  derive_first: true
+  facet_attribute: facet                 # v0.16: attributes.facet: pillar | platform | discipline | brand
 
-house_rules:                     # §9.2 — workspace-authored natural-language rules
-  stored_in: _Workspace.yaml     # house_rules: [{text, severity?, check?}]
-  text_always_in_agents_md: true # agents follow the text regardless of checks
+house_rules:                             # §9.2
+  stored_in: AGENTS.md#header            # v0.16 (was _Workspace.yaml)
+  text_always_in_agents_md: true
   default_severity: warn
   check_types: [filename_prefix, forbidden_substring]
   finding_ids: "HR-1, HR-2, …"
 
-relationships:                   # §6.7 — the "edges" of the world model
-  stored_in: entity_frontmatter  # relations: [{predicate, target, note}]
-  predicates:                    # closed vocabulary (RL-001)
-    - leads
-    - owns
-    - works-on
-    - member-of
-    - reports-to
-    - uses
-    - deployed-for
-    - depends-on
-    - related-to
-  target: entity_slug_or_scope_path              # RL-002
+relationships:                           # §6.7
+  stored_in: entity_frontmatter
+  predicates: [member-of, related-to]    # v0.16: fixed by the spec (RL-001); not tuned per workspace
+  fields:
+    as: { required_for: [related-to], description: "short description of the relationship, from the subject's view" }
+    since: { format: iso_date, optional: true }
+    until: { format: iso_date, optional: true }   # present and past = former relationship
+    note: { optional: true }
+  record_once: true                      # no mirror edges; tooling derives inverses
+  target: entity_slug_or_scope_path      # RL-002 (also checks scope `facets` slugs)
 
-projection:                      # §6.8 — generated world-model snapshot
-  file: "_Model.json"
-  derived: true                  # rebuilt from files; exempt from ST-004
+views:                                   # v0.16 — served by tooling, never written to the Drive
+  index: "map of scopes (with 'What it is'), entities and facets"
+  model: "nodes + edges: entities, scopes, relations, facet memberships"
+  digest: "health + review queue + graph insights"
 
 naming:
   pipe_separator: " | "
-  pipe_separator_aliases: [" _ "]    # Drive-safe spelling (Drive for desktop rewrites "|"); equivalent for NM-001
-  entity_no_pipes: true              # NM-003
-  ancestry_prefix: short_name_aware  # NM-001; short name = trailing "(...)" of own segment, or declared `aliases:` in the scope's _Overview.md (v0.14)
-  iso_dates: true                    # NM-002
+  pipe_separator_aliases: [" _ "]
+  entity_no_pipes: true                  # NM-003
+  ancestry_prefix: short_name_aware      # NM-001
+  iso_dates: true                        # NM-002
   context_file_prefix: "_"
+  protocol_folder_prefix: "_"            # v0.16: protocol mounts are _-prefixed by default; Archive is content
 
 archive:
-  mirror_original_path: true         # AR-001
+  mirror_original_path: true             # AR-001
   delete_forbidden: true
 
-templates:
-  context_group: "Context Group.md"
-  _Workspace.yaml: "_Workspace.yaml"
+templates:                               # v0.16: what a workspace's templates mount holds (4 files)
   _Overview.md: "_Overview.md"
   _Tasks.md: "_Tasks.md"
   wip_note: "WIP Note.md"
-  journal_day: "Daily Journal.md"
-  AGENTS.md: "AGENTS.md"
+  entity: "Entity.md"
+  # tooling-only templates (stay in spec/templates, never copied into a workspace):
+  agents_md: "AGENTS.md"
 
 rules:
-  - { id: ST-001, severity: error, summary: root has _Workspace.yaml + AGENTS.md + _Overview.md }
+  - { id: ST-001, severity: error, summary: root has AGENTS.md with a valid config header (protocol, owner, mounts) }
   - { id: ST-002, severity: error, summary: every declared mount exists }
-  - { id: ST-003, severity: error, summary: capabilities mounted and >=1 area declared }
-  - { id: ST-004, severity: warn,  summary: no undeclared root items }
-  - { id: ST-005, severity: error, summary: AGENTS.md in sync with _Workspace.yaml }
+  - { id: ST-003, severity: error, summary: journal/templates/archive mounted and >=1 area declared }
+  - { id: ST-004, severity: warn,  summary: no undeclared root items (v0.15 leftovers get a migration hint) }
   - { id: SC-001, severity: error, summary: every entity (depth-1 in area) has _Overview.md }
   - { id: CL-001, severity: error, summary: WIP notes named YYYY-MM-DD.md (optional ' - Title' suffix) }
   - { id: CL-002, severity: warn,  summary: WIP note follows template sections }
@@ -123,35 +125,26 @@ rules:
   - { id: NM-002, severity: warn,  summary: promoted scopes use ISO dates in names }
   - { id: NM-003, severity: error, summary: entity names contain no pipes }
   - { id: TK-001, severity: warn,  summary: tasks follow open/done format }
-  # removed in v0.6 (content-by-default): SC-002, SC-003, SC-004, OV-001, OV-002
   - { id: JR-001, severity: error, summary: journal path convention }
-  - { id: JR-002, severity: info,  summary: journal is index not substance }
   - { id: JR-003, severity: warn,  summary: agent sessions journaled }
   - { id: AR-001, severity: error, summary: archive mirrors paths, no deletes }
-  - { id: CX-001, severity: error, summary: context group files valid (name/title/members) }
-  - { id: CX-002, severity: warn,  summary: context group member paths exist under declaring folder }
-  - { id: EN-001, severity: error, summary: entity files valid (name + kind person/system/concept) }
+  - { id: EN-001, severity: error, summary: entity files valid (name + kind person/organization/system/concept) }
   - { id: EN-002, severity: warn,  summary: entity slug matches filename }
-  - { id: RL-001, severity: error, summary: relationship predicate in vocabulary }
-  - { id: RL-002, severity: warn,  summary: relationship target resolves to entity or scope }
+  - { id: RL-001, severity: error, summary: relationship predicate is member-of or related-to }
+  - { id: RL-002, severity: warn,  summary: targets and scope facets resolve; related-to has `as`; since/until ISO }
   - { id: DC-001, severity: warn,  summary: workstream/project scopes (depth-2) declare a scope_type }
-  - { id: TR-001, severity: warn,  summary: stale_after not breached — re-verify or deprecate (v0.14) }
-  - { id: TR-002, severity: warn,  summary: trust fields well-formed (status vocab, ISO stale_after) (v0.14) }
+  - { id: TR-001, severity: warn,  summary: stale_after not breached }
+  - { id: TR-002, severity: warn,  summary: trust fields well-formed }
+  # removed in v0.16: ST-005 (no second config file to sync), CX-001, CX-002 (context groups
+  # replaced by facets), JR-002 (journal is a log, not an index)
+  # removed in v0.6: SC-002, SC-003, SC-004, OV-001, OV-002
 
-# Profiles are NOT part of the protocol. They are organisation-specific presets
-# (starter topology, draft lifecycle, status flags, template overrides) that live
-# outside the spec in <repo>/profiles/<name>/ — profile.yaml plus an optional
-# templates/ folder — and are created, edited and deleted from the app's
-# Profiles page. Every profile is custom; none ships with the spec.
-#
-# The baseline below is the protocol's own fallback: it applies when a
-# workspace names no profile, or one that no longer exists.
 baseline:
   default_topology:
     areas: [Projects]
-    journal: Journal
-    templates: Templates
+    journal: _Journal
+    templates: _Templates
     archive: Archive
-    context: _Context
     entities: _Entities
+    proposals: _Proposals
   root_file_allowance: []

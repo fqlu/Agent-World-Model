@@ -1,10 +1,10 @@
-import YAML from "yaml";
 import { loadManifest, loadTemplate, ProfileDef } from "./spec";
 import { resolveProfile } from "./profiles";
 import { normalizeIgnoreList } from "./ignore";
 import { Mounts, WorkspaceDecl } from "./workspace";
 import { resolveRuleConfig, renderRulesSummary } from "./rules";
 import { Op } from "./ops";
+import { protocolToVersion, renderHeader, versionToProtocol } from "./config";
 
 export type ScaffoldOptions = {
   workspaceName: string;
@@ -16,41 +16,29 @@ export type ScaffoldOptions = {
 
 export function defaultTopology(profileName: string): Mounts {
   const t = resolveProfile(profileName).default_topology;
-  if (t)
-    return {
-      areas: [...t.areas],
-      journal: t.journal,
-      templates: t.templates,
-      archive: t.archive,
-      context: t.context,
-    };
   return {
-    areas: ["Projects"],
-    journal: "Journal",
-    templates: "Templates",
-    archive: "Archive",
-    context: "_Context",
+    areas: t ? [...t.areas] : ["Projects"],
+    journal: t?.journal ?? "_Journal",
+    templates: t?.templates ?? "_Templates",
+    archive: t?.archive ?? "Archive",
+    entities: t?.entities ?? "_Entities",
+    proposals: t?.proposals ?? "_Proposals",
   };
 }
 
+// The declared topology as agents see it (SPEC §2, v0.16): AGENTS.md plus
+// the protocol folders, then the content areas.
 export function renderMap(mounts: Mounts, ignore: string[] = []): string {
+  const pad = (s: string) => s.padEnd(18);
   const lines: string[] = [];
-  lines.push("_Workspace.yaml   ← topology declaration (this map's source)");
-  lines.push("_Overview.md      ← whose workspace this is; start here");
-  lines.push("_Index.md         ← generated map of scopes + context groups");
-  for (const a of mounts.areas) lines.push(`${a}/`.padEnd(18) + "← area: holds scopes");
-  lines.push(`${mounts.journal}/`.padEnd(18) + "← journal: daily index + agent activity log");
-  lines.push(`${mounts.templates}/`.padEnd(18) + "← templates: copy, never invent layouts");
-  lines.push(`${mounts.archive}/`.padEnd(18) + "← archive: superseded material, mirrors paths");
-  if (mounts.context) {
-    lines.push(`${mounts.context}/`.padEnd(18) + "← context groups: declared folder associations");
-  }
-  if (mounts.entities) {
-    lines.push(`${mounts.entities}/`.padEnd(18) + "← entities: people, systems, concepts as addressable nodes");
-  }
-  for (const p of ignore) {
-    lines.push(`${p}/`.padEnd(17) + " ← ignored: outside the protocol (not audited or indexed)");
-  }
+  lines.push(pad("AGENTS.md") + "← this file: config (header) + rules");
+  for (const a of mounts.areas) lines.push(pad(`${a}/`) + "← area: holds scopes");
+  if (mounts.entities) lines.push(pad(`${mounts.entities}/`) + "← entities: people, organizations, systems, concepts, facets");
+  lines.push(pad(`${mounts.journal}/`) + "← journal: agent activity log (YYYY/YYYY-MM/YYYY-MM-DD.md)");
+  if (mounts.proposals) lines.push(pad(`${mounts.proposals}/`) + "← proposals: agents ask, the owner decides");
+  lines.push(pad(`${mounts.templates}/`) + "← templates: copy, never invent layouts");
+  lines.push(pad(`${mounts.archive}/`) + "← archive: superseded material, mirrors paths");
+  for (const p of ignore) lines.push(pad(`${p}/`) + "← ignored: outside the protocol");
   return lines.join("\n");
 }
 
@@ -74,42 +62,58 @@ export function renderProfileRules(profileName: string, profile: ProfileDef): st
   return rules.join("\n");
 }
 
-export function renderWorkspaceYaml(opts: ScaffoldOptions, mounts: Mounts): string {
+// The v0.16 config header for a new workspace (SPEC §2).
+export function buildHeader(opts: ScaffoldOptions, mounts: Mounts, about?: string): Record<string, unknown> {
   const manifest = loadManifest();
-  return YAML.stringify({
-    spec_version: manifest.spec_version,
+  const m: Record<string, unknown> = {
+    areas: mounts.areas,
+    journal: mounts.journal,
+    templates: mounts.templates,
+    archive: mounts.archive,
+  };
+  if (mounts.entities) m.entities = mounts.entities;
+  if (mounts.proposals) m.proposals = mounts.proposals;
+  const h: Record<string, unknown> = {
+    protocol: versionToProtocol(manifest.spec_version),
     profile: opts.profile,
     owner: { name: opts.ownerName, email: opts.ownerEmail },
-    mounts: {
-      areas: mounts.areas,
-      journal: mounts.journal,
-      templates: mounts.templates,
-      archive: mounts.archive,
-      ...(mounts.context ? { context: mounts.context } : {}),
-    },
-  });
+    mounts: m,
+  };
+  if (about) h.about = about;
+  return h;
 }
 
+// AGENTS.md = config header + rulebook body rendered from it. Pass the
+// existing header to re-render (config edits); omit it for a new workspace.
 export function renderAgentsMd(
   opts: ScaffoldOptions,
   mounts: Mounts,
   decl?: WorkspaceDecl | null,
+  header?: Record<string, unknown>,
 ): string {
   const manifest = loadManifest();
   const profile = resolveProfile(opts.profile);
   const cfg = resolveRuleConfig(decl ?? null);
-  // Reflect the workspace's DECLARED spec version (regenerating AGENTS must not
-  // silently bump it ahead of _Workspace.yaml — that's the adopt flow's job).
-  const specVersion = decl?.spec_version ?? manifest.spec_version;
-  return loadTemplate("AGENTS.md", opts.profile)
+  const h = header ?? buildHeader(opts, mounts, decl?.about);
+  const specVersion = protocolToVersion(h.protocol) ?? decl?.spec_version ?? manifest.spec_version;
+  const about = typeof h.about === "string" && h.about.trim() ? `**About:** ${h.about.trim()}` : "";
+  const body = loadTemplate("AGENTS.md", opts.profile)
     .replaceAll("{{spec_version}}", String(specVersion))
     .replaceAll("{{profile}}", opts.profile)
     .replaceAll("{{owner_name}}", opts.ownerName)
     .replaceAll("{{owner_email}}", opts.ownerEmail)
-    .replaceAll("{{map}}", renderMap(mounts, normalizeIgnoreList(decl?.ignore)))
+    .replaceAll("{{about}}", about)
+    .replaceAll("{{map}}", renderMap(mounts, normalizeIgnoreList(decl?.ignore ?? h.ignore)))
+    .replaceAll("{{journal}}", mounts.journal)
+    .replaceAll("{{templates}}", mounts.templates)
+    .replaceAll("{{archive}}", mounts.archive)
+    .replaceAll("{{entities}}", mounts.entities ?? "_Entities")
+    .replaceAll("{{proposals}}", mounts.proposals ?? "_Proposals")
     .replaceAll("{{rules_summary}}", renderRulesSummary(cfg))
     .replaceAll("{{house_rules}}", renderHouseRules(decl ?? null))
-    .replaceAll("{{profile_rules}}", renderProfileRules(opts.profile, profile));
+    .replaceAll("{{profile_rules}}", renderProfileRules(opts.profile, profile))
+    .replace(/\n{3,}/g, "\n\n");
+  return `${renderHeader(h)}\n${body.trimEnd()}\n`;
 }
 
 function renderHouseRules(decl: WorkspaceDecl | null): string {
@@ -125,34 +129,12 @@ function renderHouseRules(decl: WorkspaceDecl | null): string {
     .join("\n");
 }
 
-export function renderRootOverview(opts: ScaffoldOptions, mounts: Mounts): string {
-  return `# ${opts.workspaceName}
-
-## What it is
-Workspace of ${opts.ownerName} <${opts.ownerEmail}>. Structured under the Drive
-Context Protocol (see \`_PROTOCOL.md\`). Areas: ${mounts.areas.join(", ")}.
-
-## Active workstreams
-- *(none yet — populate as work begins)*
-
-## Key people
-**Owner:**
-- ${opts.ownerName} — ${opts.ownerEmail}
-
-## Recent activity
-*No entries yet.*
-
-## Reference
-- [Workspace protocol](_PROTOCOL.md)
-`;
-}
-
-// Workspace-facing template names (what lands in the Templates mount)
-const TEMPLATE_FILES: Array<{ spec: string; workspace: string }> = [
+// Workspace-facing template names (what lands in the templates mount, SPEC §2)
+export const TEMPLATE_FILES: Array<{ spec: string; workspace: string }> = [
   { spec: "_Overview.md", workspace: "_Overview Template.md" },
-  { spec: "WIP Note.md", workspace: "WIP Note Template.md" },
-  { spec: "Daily Journal.md", workspace: "Daily Journal Template.md" },
   { spec: "_Tasks.md", workspace: "_Tasks Template.md" },
+  { spec: "WIP Note.md", workspace: "WIP Note Template.md" },
+  { spec: "Entity.md", workspace: "Entity Template.md" },
 ];
 
 export function buildScaffoldPlan(opts: ScaffoldOptions): Op[] {
@@ -162,31 +144,17 @@ export function buildScaffoldPlan(opts: ScaffoldOptions): Op[] {
   for (const a of mounts.areas) {
     ops.push({ action: "mkdir", path: a, note: `Create area "${a}"`, selected: true });
   }
-  for (const m of [mounts.journal, mounts.templates, mounts.archive, mounts.context].filter(
+  for (const m of [mounts.journal, mounts.templates, mounts.archive, mounts.entities, mounts.proposals].filter(
     (x): x is string => Boolean(x),
   )) {
-    ops.push({ action: "mkdir", path: m, note: `Create capability mount "${m}"`, selected: true });
+    ops.push({ action: "mkdir", path: m, note: `Create protocol folder "${m}"`, selected: true });
   }
-  ops.push({
-    action: "write",
-    path: "_Workspace.yaml",
-    content: renderWorkspaceYaml(opts, mounts),
-    note: "Declare the workspace topology",
-    selected: true,
-  });
   ops.push({
     action: "write",
     path: "AGENTS.md",
     content: renderAgentsMd(opts, mounts),
     overwrite: true,
-    note: "Generate the agent rulebook (AGENTS.md) from spec + profile + topology",
-    selected: true,
-  });
-  ops.push({
-    action: "write",
-    path: "_Overview.md",
-    content: renderRootOverview(opts, mounts),
-    note: "Create the root overview",
+    note: "Write AGENTS.md: the workspace config (header) and agent rulebook",
     selected: true,
   });
   for (const t of TEMPLATE_FILES) {

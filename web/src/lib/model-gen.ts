@@ -1,5 +1,6 @@
 import { Connector } from "./connector";
-import { parseWorkspaceYaml, parseFrontmatter } from "./workspace";
+import { parseFrontmatter } from "./workspace";
+import { readDecl } from "./config";
 import { listEntities, Entity } from "./entities";
 import { parseGroupFile, DEFAULT_CONTEXT_DIR } from "./context";
 
@@ -9,7 +10,7 @@ import { parseGroupFile, DEFAULT_CONTEXT_DIR } from "./context";
 
 export type ModelNode = {
   id: string; // "entity:<slug>" or "scope:<path>"
-  kind: "person" | "system" | "concept" | "scope";
+  kind: "person" | "organization" | "system" | "concept" | "scope";
   label: string;
   attributes?: Record<string, string>;
   source?: string;
@@ -19,6 +20,9 @@ export type ModelEdge = {
   from: string;
   to: string;
   predicate: string;
+  as?: string;
+  since?: string;
+  until?: string;
   note?: string;
 };
 
@@ -31,18 +35,30 @@ export type WorldModel = {
   edges: ModelEdge[];
 };
 
-async function readDecl(c: Connector) {
-  const raw = await c.read("_Workspace.yaml");
-  return raw ? parseWorkspaceYaml(raw) : null;
+export type ScopeInfo = { path: string; name: string; scopeType?: string; facets: string[] };
+
+// Effective facets (SPEC §3.1): a scope's own plus every ancestor scope's.
+export function effectiveFacets(scopes: ScopeInfo[]): Map<string, string[]> {
+  const own = new Map(scopes.map((s) => [s.path, s.facets]));
+  const out = new Map<string, string[]>();
+  for (const s of scopes) {
+    const set = new Set<string>();
+    const parts = s.path.split("/");
+    for (let i = 1; i <= parts.length; i++) {
+      for (const f of own.get(parts.slice(0, i).join("/")) ?? []) set.add(f);
+    }
+    out.set(s.path, [...set]);
+  }
+  return out;
 }
 
 // Promoted scopes = folders containing _Overview.md (entities + promoted).
 export async function promotedScopes(
   c: Connector,
-): Promise<{ path: string; name: string; scopeType?: string }[]> {
+): Promise<ScopeInfo[]> {
   const decl = await readDecl(c);
   const areas = decl?.mounts?.areas ?? [];
-  const out: { path: string; name: string; scopeType?: string }[] = [];
+  const out: ScopeInfo[] = [];
   async function walk(path: string, depth: number) {
     if (depth > 4) return;
     for (const e of await c.list(path)) {
@@ -51,8 +67,10 @@ export async function promotedScopes(
       const ov = children.find((x) => x.name === "_Overview.md");
       if (ov) {
         const md = await c.read(ov.path);
-        const st = md !== null ? (parseFrontmatter(md).data.scope_type as string | undefined) : undefined;
-        out.push({ path: e.path, name: e.name, scopeType: st });
+        const fm = md !== null ? parseFrontmatter(md).data : {};
+        const st = fm.scope_type as string | undefined;
+        const facets = Array.isArray(fm.facets) ? fm.facets.map(String).map((x) => x.trim()).filter(Boolean) : [];
+        out.push({ path: e.path, name: e.name, scopeType: st, facets });
       }
       await walk(e.path, depth + 1);
     }
@@ -116,11 +134,29 @@ export async function buildModel(c: Connector): Promise<WorldModel | null> {
         toId = `unresolved:${r.target}`;
         addNode({ id: toId, kind: "scope", label: `${r.target} (unresolved)` });
       }
-      edges.push({ from: `entity:${e.slug}`, to: toId, predicate: r.predicate, note: r.note });
+      edges.push({
+        from: `entity:${e.slug}`,
+        to: toId,
+        predicate: r.predicate,
+        ...(r.as ? { as: r.as } : {}),
+        ...(r.since ? { since: r.since } : {}),
+        ...(r.until ? { until: r.until } : {}),
+        ...(r.note ? { note: r.note } : {}),
+      });
     }
   }
 
-  // Context-group membership edges (scope —in-group→ pseudo-node per group)
+  // Facet membership edges (v0.16, SPEC §3.1): scope —facet→ facet entity.
+  // Direct declarations only; inheritance is computed by readers.
+  for (const s of scopes) {
+    for (const f of s.facets) {
+      const toId = entityBySlug.has(f) ? `entity:${f}` : `unresolved:${f}`;
+      if (!entityBySlug.has(f)) addNode({ id: toId, kind: "concept", label: `${f} (unresolved facet)` });
+      edges.push({ from: `scope:${s.path}`, to: toId, predicate: "facet" });
+    }
+  }
+
+  // LEGACY (v0.15) context-group membership edges (scope —in-group→ group)
   const ctxName = decl.mounts.context ?? DEFAULT_CONTEXT_DIR;
   async function collectGroups(dirPath: string, basePath: string) {
     for (const e of await c.list(dirPath)) {
@@ -175,7 +211,11 @@ export async function buildModel(c: Connector): Promise<WorldModel | null> {
   };
 }
 
+// v0.16 (SPEC §6.8): the model is a tooling view, never stored in the Drive.
+// Only legacy v0.15 workspaces still get a _Model.json file.
 export async function writeModel(c: Connector): Promise<boolean> {
+  const decl = await readDecl(c);
+  if (decl?.layout !== "v0.15") return false;
   const model = await buildModel(c);
   if (!model) return false;
   await c.write("_Model.json", JSON.stringify(model, null, 2), { overwrite: true });

@@ -1,12 +1,22 @@
 import YAML from "yaml";
 import { Connector } from "./connector";
-import { parseWorkspaceYaml, sectionLines } from "./workspace";
+import { sectionLines } from "./workspace";
+import { readDecl, readMounts } from "./config";
 import { journalAgentActivity } from "./ops";
 
-export type EntityKind = "person" | "system" | "concept";
+export type EntityKind = "person" | "organization" | "system" | "concept";
 export type EntitySource = "derived" | "asserted";
 
-export type Relation = { predicate: string; target: string; note?: string };
+// v0.16 (SPEC §6.7): predicate is member-of | related-to; `as` says what the
+// relationship is (required for related-to); since/until are ISO dates.
+export type Relation = {
+  predicate: string;
+  target: string;
+  as?: string;
+  since?: string;
+  until?: string;
+  note?: string;
+};
 
 // ---- Trust signals (OKF v0.2 alignment, SPEC §12) ----
 // Actor convention: "human:<id>" | "<producer>/<version>" | "process:<id>"
@@ -43,7 +53,7 @@ export function trustTier(e: Entity): "human-reviewed" | "machine-confirmed" | "
 }
 
 export const DEFAULT_ENTITIES_MOUNT = "_Entities";
-const KINDS: EntityKind[] = ["person", "system", "concept"];
+export const KINDS: EntityKind[] = ["person", "organization", "system", "concept"];
 
 export function slugify(name: string): string {
   return (
@@ -82,10 +92,14 @@ export function parseEntityFile(md: string): Entity | null {
   if (Array.isArray(d.relations)) {
     for (const r of d.relations) {
       if (r && typeof r === "object" && typeof (r as Relation).predicate === "string" && typeof (r as Relation).target === "string") {
-        const rr = r as { predicate: string; target: string; note?: unknown };
+        const rr = r as Record<string, unknown> & { predicate: string; target: string };
+        const str = (v: unknown) => (v === undefined || v === null || v === "" ? undefined : String(v));
         relations.push({
           predicate: rr.predicate,
           target: rr.target,
+          as: str(rr.as),
+          since: str(rr.since),
+          until: str(rr.until),
           note: typeof rr.note === "string" ? rr.note : undefined,
         });
       }
@@ -163,22 +177,23 @@ export function serializeEntity(e: Entity): string {
   if (e.stale_after) front.stale_after = e.stale_after;
   front.attributes = e.attributes;
   if (e.relations.length) {
-    front.relations = e.relations.map((r) =>
-      r.note ? { predicate: r.predicate, target: r.target, note: r.note } : { predicate: r.predicate, target: r.target },
-    );
+    front.relations = e.relations.map(serializeRelation);
   }
   return `---\n${YAML.stringify(front).trimEnd()}\n---\n\n${e.notes.trim()}\n`;
 }
 
-async function readDecl(c: Connector) {
-  const raw = await c.read("_Workspace.yaml");
-  return raw ? parseWorkspaceYaml(raw) : null;
+export function serializeRelation(r: Relation): Record<string, string> {
+  const out: Record<string, string> = { predicate: r.predicate, target: r.target };
+  if (r.as) out.as = r.as;
+  if (r.since) out.since = r.since;
+  if (r.until) out.until = r.until;
+  if (r.note) out.note = r.note;
+  return out;
 }
 
 export async function entitiesMount(c: Connector): Promise<string | null> {
-  const decl = await readDecl(c);
-  // explicit mount, or default if the workspace simply hasn't declared one yet
-  return decl?.mounts?.entities ?? DEFAULT_ENTITIES_MOUNT;
+  // explicit mount, or the protocol default
+  return (await readMounts(c)).entities ?? DEFAULT_ENTITIES_MOUNT;
 }
 
 export async function listEntities(
@@ -239,20 +254,6 @@ export async function saveEntities(
     }
   }
 
-  // register mount if missing
-  const raw = await c.read("_Workspace.yaml");
-  if (raw) {
-    const doc = YAML.parse(raw) as Record<string, unknown> | null;
-    if (doc && typeof doc === "object") {
-      const m = (doc.mounts ?? {}) as Record<string, unknown>;
-      if (!m.entities) {
-        m.entities = mount;
-        doc.mounts = m;
-        await c.write("_Workspace.yaml", YAML.stringify(doc), { overwrite: true });
-      }
-    }
-  }
-
   const written: string[] = [];
   const keep = new Set<string>();
   for (const e of entities) {
@@ -262,8 +263,8 @@ export async function saveEntities(
     written.push(`${mount}/${slug}.md`);
   }
 
-  const decl = await readDecl(c);
-  const archiveMount = decl?.mounts?.archive ?? "Archive";
+  const mounts = await readMounts(c);
+  const archiveMount = mounts.archive;
   const archived: string[] = [];
   for (const e of await c.list(mount)) {
     if (e.kind !== "file" || !e.name.endsWith(".md") || keep.has(e.name)) continue;
@@ -278,7 +279,7 @@ export async function saveEntities(
   try {
     await journalAgentActivity(
       c,
-      decl?.mounts?.journal ?? "Journal",
+      mounts.journal,
       `entities saved — ${entities.length} entit${entities.length === 1 ? "y" : "ies"}${archived.length ? `, ${archived.length} archived` : ""}`,
     );
   } catch {

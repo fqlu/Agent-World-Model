@@ -2,10 +2,10 @@ import { Connector, Entry } from "./connector";
 import { loadManifest } from "./spec";
 import { resolveProfile } from "./profiles";
 import { resolveRuleConfig } from "./rules";
-import { parseGroupFile, DEFAULT_CONTEXT_DIR } from "./context";
+import { DEFAULT_CONTEXT_DIR } from "./context";
+import { readDeclInfo, AGENTS_FILE, LEGACY_CONFIG_FILE } from "./config";
 import { parseEntityFile } from "./entities";
 import {
-  parseWorkspaceYaml,
   parseFrontmatter,
   WorkspaceDecl,
   allowedForms,
@@ -60,9 +60,10 @@ export async function runAudit(c: Connector, profileName = "incubeta"): Promise<
 
   // Parse the topology declaration first so per-workspace rule overrides
   // (SPEC §9.1) apply to every finding, including the structural ones below.
-  let decl: WorkspaceDecl | null = null;
-  const wsRaw = await c.read(manifest.workspace.manifest_file);
-  if (wsRaw !== null) decl = parseWorkspaceYaml(wsRaw);
+  const info = await readDeclInfo(c);
+  const decl: WorkspaceDecl | null = info.decl;
+  const legacy = info.source === "workspace-yaml";
+  const configPath = legacy ? LEGACY_CONFIG_FILE : AGENTS_FILE;
   const cfg = resolveRuleConfig(decl);
 
   // add() honors the workspace's effective severity — a rule set to "off" is
@@ -79,12 +80,22 @@ export async function runAudit(c: Connector, profileName = "incubeta"): Promise<
   const root = await c.list("");
   const rootNames = new Set(root.map((e) => e.name));
 
-  // ST-001 — required root files
-  for (const f of manifest.workspace.required_root_files) {
-    if (!rootNames.has(f)) add("ST-001", f, `Missing required root file ${f}`);
-  }
-  if (wsRaw !== null && !decl) {
-    add("ST-001", manifest.workspace.manifest_file, "Topology manifest is not valid YAML");
+  // ST-001 — AGENTS.md with a valid config header (v0.16, SPEC §2)
+  if (!rootNames.has(AGENTS_FILE)) {
+    add("ST-001", AGENTS_FILE, `Missing required root file ${AGENTS_FILE}`);
+  } else if (legacy) {
+    add(
+      "ST-001",
+      LEGACY_CONFIG_FILE,
+      "Workspace uses the v0.15 layout (_Workspace.yaml); config belongs in the AGENTS.md header — run the v0.16 migration",
+    );
+  } else if (info.invalidHeader || !decl) {
+    add("ST-001", AGENTS_FILE, "AGENTS.md has no valid config header (protocol, owner, mounts)");
+  } else {
+    const keys = manifest.workspace.required_header_keys ?? ["protocol", "owner", "mounts"];
+    const raw = (info.raw ?? {}) as Record<string, unknown>;
+    const missing = keys.filter((k) => raw[k] === undefined);
+    if (missing.length) add("ST-001", AGENTS_FILE, `Config header missing: ${missing.join(", ")}`);
   }
 
   if (!decl?.mounts) {
@@ -96,18 +107,19 @@ export async function runAudit(c: Connector, profileName = "incubeta"): Promise<
     journal: decl.mounts.journal ?? "",
     templates: decl.mounts.templates ?? "",
     archive: decl.mounts.archive ?? "",
-    context: decl.mounts.context ?? "",
+    context: legacy ? (decl.mounts.context ?? "") : "",
     entities: decl.mounts.entities ?? "",
+    proposals: decl.mounts.proposals ?? "",
   };
 
   // ST-003 — capabilities mounted, >=1 area
   for (const cap of manifest.workspace.required_capabilities) {
     if (!(mounts as Record<string, unknown>)[cap]) {
-      add("ST-003", manifest.workspace.manifest_file, `Capability "${cap}" is not mounted`);
+      add("ST-003", configPath, `Capability "${cap}" is not mounted`);
     }
   }
   if (mounts.areas.length < manifest.workspace.areas_min) {
-    add("ST-003", manifest.workspace.manifest_file, "At least one area must be declared");
+    add("ST-003", configPath, "At least one area must be declared");
   }
 
   // ST-002 — declared mounts exist
@@ -118,49 +130,39 @@ export async function runAudit(c: Connector, profileName = "incubeta"): Promise<
     mounts.archive,
     mounts.context,
     mounts.entities,
+    mounts.proposals,
   ].filter(Boolean);
   for (const p of declaredPaths) {
     if (!rootNames.has(p)) add("ST-002", p, `Declared mount "${p}" does not exist`);
   }
 
-  // ST-004 — undeclared root items
+  // ST-004 — undeclared root items; v0.15 leftovers get a migration hint
+  const legacyFiles = new Set([...(manifest.workspace.legacy_root_files ?? []), DEFAULT_CONTEXT_DIR]);
   const allowance = new Set([
     ...manifest.workspace.required_root_files,
-    ...(manifest.workspace.optional_root_files ?? []),
     ...declaredPaths,
     ...((profile.root_file_allowance as string[] | undefined) ?? []),
   ]);
   for (const e of root) {
-    if (!allowance.has(e.name)) {
-      add("ST-004", e.name, `Root item "${e.name}" is not declared in ${manifest.workspace.manifest_file}`);
+    if (allowance.has(e.name)) continue;
+    if (legacyFiles.has(e.name)) {
+      // expected in a not-yet-migrated workspace (ST-001 already says so)
+      if (!legacy) add("ST-004", e.name, `"${e.name}" is a v0.15 protocol file — archive it (the v0.16 migration does this)`);
+      continue;
     }
+    add("ST-004", e.name, `Root item "${e.name}" is not declared in the ${configPath} config`);
   }
-
-  // ST-005 — rulebook in sync
-  const rulebook = manifest.workspace.rulebook_file;
-  const protocol = await c.read(rulebook);
-  if (protocol !== null) {
-    if (decl.spec_version && !protocol.includes(String(decl.spec_version))) {
-      add("ST-005", rulebook, `Does not mention declared spec version ${decl.spec_version}`);
-    }
-    if (decl.profile && !protocol.includes(String(decl.profile))) {
-      add("ST-005", rulebook, `Does not mention declared profile "${decl.profile}"`);
-    }
-  }
-
-  if (await c.exists("_Overview.md")) stats.overviews++;
 
   const ctxDirName = mounts.context || DEFAULT_CONTEXT_DIR;
+  // v0.16 facets declared on scope overviews, checked against entities below
+  const facetRefs: { path: string; slug: string }[] = [];
 
   // ---- Areas ----
   for (const area of mounts.areas) {
     if (!rootNames.has(area)) continue;
     for (const entity of await c.list(area)) {
       if (entity.kind !== "folder") continue;
-      if (entity.name === ctxDirName) {
-        await checkContextDir(entity.path, area);
-        continue;
-      }
+      if (entity.name === ctxDirName) continue; // legacy context dir (v0.15)
       if (entity.name.includes("|")) {
         add("NM-003", entity.path, `Entity folder name contains a pipe: "${entity.name}"`);
       }
@@ -176,6 +178,7 @@ export async function runAudit(c: Connector, profileName = "incubeta"): Promise<
         // v0.14 — declared aliases join the ancestry forms (SPEC §3.2)
         const ovMd = await c.read(`${entity.path}/${manifest.scopes.context_file}`);
         for (const a of declaredAliases(ovMd)) entityForms.add(a);
+        collectFacets(`${entity.path}/${manifest.scopes.context_file}`, ovMd);
       }
       await walkFolder(entity, children, [entityForms]);
     }
@@ -186,10 +189,6 @@ export async function runAudit(c: Connector, profileName = "incubeta"): Promise<
     await walkJournal(mounts.journal, mounts.journal);
   }
 
-  // ---- Root-level context groups (SPEC §6.4) ----
-  if (mounts.context && rootNames.has(mounts.context)) {
-    await checkContextDir(mounts.context, "");
-  }
 
   // ---- House rules (SPEC §9.2) — workspace-authored checks ----
   const houseRules = decl.house_rules ?? [];
@@ -264,7 +263,7 @@ export async function runAudit(c: Connector, profileName = "incubeta"): Promise<
     for (const e of entityFiles) {
       const ent = parsed.get(e.path);
       if (!ent) {
-        add("EN-001", e.path, "Invalid entity file (needs frontmatter with name + kind person/system/concept)");
+        add("EN-001", e.path, "Invalid entity file (needs frontmatter with name + kind person/organization/system/concept)");
         continue;
       }
       stats.entities = (stats.entities ?? 0) + 1;
@@ -273,22 +272,40 @@ export async function runAudit(c: Connector, profileName = "incubeta"): Promise<
       }
       for (const r of ent.relations) {
         if (!predicates.has(r.predicate)) {
-          add("RL-001", e.path, `Relationship predicate "${r.predicate}" not in vocabulary`);
+          add("RL-001", e.path, `Relationship predicate "${r.predicate}" is not ${[...predicates].join(" or ")}`);
         }
         const resolvesEntity = slugs.has(r.target);
         const resolvesScope = !resolvesEntity && (await c.exists(r.target));
         if (!resolvesEntity && !resolvesScope) {
           add("RL-002", e.path, `Relationship target "${r.target}" resolves to neither an entity nor a scope`);
         }
+        if (r.predicate === "related-to" && !r.as) {
+          add("RL-002", e.path, `related-to "${r.target}" has no \`as\` saying what the relationship is`);
+        }
+        for (const [k, v] of [["since", r.since], ["until", r.until]] as const) {
+          if (v && !/^\d{4}-\d{2}(-\d{2})?$/.test(v)) add("RL-002", e.path, `${k} "${v}" is not an ISO date`);
+        }
       }
       const raw = raws.get(e.path);
       if (raw) checkTrustFields(e.path, parseFrontmatter(raw).data);
     }
+    // facets on scope overviews must resolve to an entity (SPEC §3.1)
+    for (const f of facetRefs) {
+      if (!slugs.has(f.slug)) add("RL-002", f.path, `Facet "${f.slug}" doesn't resolve to an entity`);
+    }
+  } else {
+    for (const f of facetRefs) add("RL-002", f.path, `Facet "${f.slug}" declared but the workspace has no entities`);
   }
 
   return { findings, stats, decl };
 
   // ---------- helpers ----------
+
+  function collectFacets(p: string, md: string | null) {
+    if (!md) return;
+    const f = parseFrontmatter(md).data.facets;
+    if (Array.isArray(f)) for (const x of f) facetRefs.push({ path: p, slug: String(x).trim() });
+  }
 
   // Trust hygiene (OKF v0.2 alignment, SPEC §12) — applies to entity files and
   // promoted-scope overviews. Purely advisory: warns, never blocks.
@@ -324,10 +341,7 @@ export async function runAudit(c: Connector, profileName = "incubeta"): Promise<
     for (const child of children) {
       if (child.kind !== "folder") continue;
 
-      if (child.name === ctxDirName) {
-        await checkContextDir(child.path, folder.path);
-        continue;
-      }
+      if (child.name === ctxDirName) continue; // legacy context dir (v0.15)
 
       const lastSegment = splitPipe(child.name).pop() ?? child.name;
       const pipeCheck = checkPipeName(child.name, chain);
@@ -363,6 +377,7 @@ export async function runAudit(c: Connector, profileName = "incubeta"): Promise<
             add("DC-001", child.path, st ? `scope_type "${st}" not one of ${allowed.join(", ")}` : `Scope is missing a scope_type (${allowed.join("/")}) — see §3.1`);
           }
         }
+        collectFacets(`${child.path}/${manifest.scopes.context_file}`, scopeOverviewMd);
         if (scopeOverviewMd !== null) {
           checkTrustFields(`${child.path}/${manifest.scopes.context_file}`, parseFrontmatter(scopeOverviewMd).data);
         }
@@ -374,32 +389,6 @@ export async function runAudit(c: Connector, profileName = "incubeta"): Promise<
       // v0.14 — declared aliases join the scope's forms for descendant checks
       for (const a of declaredAliases(scopeOverviewMd)) ownForms.add(a);
       await walkFolder(child, grandchildren, [...chain, ownForms]);
-    }
-  }
-
-  // Validate a context directory: group files parse, slugs match filenames,
-  // members exist under the containing folder.
-  async function checkContextDir(dirPath: string, parentPath: string) {
-    for (const e of await c.list(dirPath)) {
-      if (e.kind !== "file" || !e.name.endsWith(".md")) continue;
-      const md = await c.read(e.path);
-      const g = md !== null ? parseGroupFile(md) : null;
-      if (!g) {
-        add("CX-001", e.path, "Invalid context group file (needs frontmatter with name, title, members)");
-        continue;
-      }
-      stats.groups = (stats.groups ?? 0) + 1;
-      if (`${g.slug}.md` !== e.name) {
-        add("CX-001", e.path, `Group name "${g.slug}" does not match filename`);
-      }
-      for (const m of g.members) {
-        const memberPath = parentPath ? `${parentPath}/${m.path}` : m.path;
-        if (m.path.startsWith("/") || m.path.split("/").some((s) => s === "..")) {
-          add("CX-002", e.path, `Member "${m.path}" must be a relative descendant path`);
-        } else if (!(await c.exists(memberPath))) {
-          add("CX-002", e.path, `Member "${m.path}" does not exist under ${parentPath || "(root)"}`);
-        }
-      }
     }
   }
 
@@ -438,24 +427,6 @@ export async function runAudit(c: Connector, profileName = "incubeta"): Promise<
         continue;
       }
       stats.journalDays++;
-      const md = await c.read(e.path);
-      if (md !== null) {
-        // Agent activity records are logs, not index lines — exempt from JR-002.
-        const heading = `## ${manifest.collections.journal.agent_activity_heading}`;
-        let inAgentActivity = false;
-        const bulletNoLink = md.split("\n").filter((l) => {
-          if (l.startsWith("## ")) inAgentActivity = l.trim() === heading;
-          return (
-            !inAgentActivity &&
-            l.trim().startsWith("- ") &&
-            !l.includes("](") &&
-            l.trim().length > 4
-          );
-        });
-        if (bulletNoLink.length > 0) {
-          add("JR-002", e.path, `${bulletNoLink.length} journal line(s) without links — journal should be an index`);
-        }
-      }
     }
   }
 }

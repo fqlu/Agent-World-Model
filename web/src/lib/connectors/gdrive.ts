@@ -109,7 +109,7 @@ export class GDriveConnector implements Connector {
     if (existing) {
       await this.drive.files.update({
         fileId: existing,
-        media: { mimeType: "text/markdown", body: content },
+        media: { mimeType: mimeFor(safe), body: content },
         supportsAllDrives: true,
       });
       return;
@@ -119,7 +119,7 @@ export class GDriveConnector implements Connector {
     const parentId = (await this.idFor(parent))!;
     const res = await this.drive.files.create({
       requestBody: { name: baseName(safe), parents: [parentId] },
-      media: { mimeType: "text/markdown", body: content },
+      media: { mimeType: mimeFor(safe), body: content },
       fields: "id",
       supportsAllDrives: true,
     });
@@ -145,4 +145,11 @@ export class GDriveConnector implements Connector {
     this.idCache.delete(assertSafeRelPath(from));
     this.idCache.set(assertSafeRelPath(to), fromId);
   }
+}
+
+// Content type from the extension (proposals/decisions are JSON, not markdown).
+function mimeFor(p: string): string {
+  if (p.endsWith(".json")) return "application/json";
+  if (p.endsWith(".yaml") || p.endsWith(".yml")) return "application/yaml";
+  return "text/markdown";
 }

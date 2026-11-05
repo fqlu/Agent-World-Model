@@ -82,10 +82,10 @@ export default async function ProfilePage({ params }: { params: Promise<{ name: 
         initial={{
           description: def.description ?? "",
           areas: t?.areas?.join(", ") ?? "",
-          journal: t?.journal ?? "Journal",
-          templates: t?.templates ?? "Templates",
+          journal: t?.journal ?? "_Journal",
+          templates: t?.templates ?? "_Templates",
           archive: t?.archive ?? "Archive",
-          context: t?.context ?? "",
+          proposals: t?.proposals ?? "",
           entities: t?.entities ?? "",
           draftEnabled: Boolean(def.draft_lifecycle),
           workingPrefix: def.draft_lifecycle?.working_prefix ?? "Draft_",

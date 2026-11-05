@@ -29,6 +29,7 @@ that structure on a connected Google Drive.
 | M3.13 | UX — entities filter (type/client/org/provenance/search) + Glossary page + header nav | 🟢 |
 | M3.14 | UX — world-model graph filtering (focus by client/group + node-type toggles) | 🟢 |
 | M3.15 | Decomposition convention (spec v0.13) — workstream/project `scope_type` + filing decision tree in AGENTS.md + pillars/facets as context groups + DC-001 audit | 🟢 |
+| M3.16 | Minimal protocol (spec v0.16) — config in the AGENTS.md header; no generated files in the Drive; facets replace context groups; relationships = member-of / related-to + `as`; `organization` kind; `_Proposals/` + Dreaming inbox; v0.15 → v0.16 migration (`npm run migrate`) | 🟢 |
 | M4 | Cloud Run deployment, incubeta.com-restricted OAuth | ⬜ |
 | Later | GTM container audit module, contacts, shared team zones | ⬜ |
 

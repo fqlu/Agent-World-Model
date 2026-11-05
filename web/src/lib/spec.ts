@@ -10,12 +10,12 @@ export type LintRuleDef = { id: string; severity: "error" | "warn" | "info"; sum
 export type SpecManifest = {
   spec_version: string;
   workspace: {
-    manifest_file: string;
-    rulebook_file: string;
+    config_file: string; // v0.16: AGENTS.md (YAML header)
     required_root_files: string[];
-    optional_root_files?: string[];
+    required_header_keys?: string[];
     required_capabilities: string[];
     areas_min: number;
+    legacy_root_files?: string[]; // v0.15 leftovers → ST-004 migration hint
   };
   scopes: {
     context_file: string;
@@ -28,7 +28,7 @@ export type SpecManifest = {
   };
   collections: {
     wip_notes: { suffix: string; file_pattern: string; required_sections: string[] };
-    journal: { path_pattern: string; agent_activity_heading: string };
+    journal: { path_pattern: string; agent_activity_heading: string; line_format?: string };
   };
   entities?: {
     default_mount: string;
@@ -52,8 +52,9 @@ export type ProfileTopology = {
   journal: string;
   templates: string;
   archive: string;
-  context?: string;
+  context?: string; // legacy (v0.15)
   entities?: string;
+  proposals?: string;
 };
 
 export type ProfileDef = {

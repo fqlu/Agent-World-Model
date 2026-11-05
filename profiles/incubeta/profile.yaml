@@ -2,11 +2,11 @@
 description: Incubeta client-services workspace — Clients/ + Internal/ areas, Draft_ → [INT]/[EXT] lifecycle, status flags.
 default_topology:           # starter, not law — workspaces may declare otherwise
   areas: [Clients, Internal]
-  journal: Journal
-  templates: Templates
+  journal: _Journal
+  templates: _Templates
   archive: Archive
-  context: _Context
   entities: _Entities
+  proposals: _Proposals
 draft_lifecycle:
   working_prefix: "Draft_"
   production_prefixes: ["[INT]", "[EXT]"]

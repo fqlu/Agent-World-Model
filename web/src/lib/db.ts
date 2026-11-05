@@ -124,7 +124,7 @@ export type BundleRow = {
 export type ProposalRow = {
   id: number;
   workspace_id: number;
-  kind: "scaffold" | "adopt";
+  kind: "scaffold" | "adopt" | "migrate";
   created_at: string;
   plan: string;
   status: string;

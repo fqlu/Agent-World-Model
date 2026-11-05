@@ -4,7 +4,7 @@ import { Connector } from "./connector";
 import { q } from "./db";
 import { buildManifest, diffManifest, Manifest } from "./sync";
 import { runAudit, Finding } from "./linter";
-import { parseWorkspaceYaml } from "./workspace";
+import { readDecl, resolveMounts } from "./config";
 import { journalAgentActivity } from "./ops";
 
 // Phase 2 — the review-and-verify loop (the "git model", SPEC §6.9).
@@ -75,12 +75,12 @@ function kindOf(path: string, entitiesMount: string, journalMount: string, conte
 }
 
 async function mounts(c: Connector) {
-  const raw = await c.read("_Workspace.yaml");
-  const decl = raw ? parseWorkspaceYaml(raw) : null;
+  const decl = await readDecl(c);
+  const m = resolveMounts(decl);
   return {
-    entities: decl?.mounts?.entities ?? "_Entities",
-    journal: decl?.mounts?.journal ?? "Journal",
-    context: decl?.mounts?.context ?? "_Context",
+    entities: m.entities,
+    journal: m.journal,
+    context: m.context ?? "_Context",
     owner: decl?.owner?.email ? `human:${decl.owner.email}` : "human:owner",
   };
 }

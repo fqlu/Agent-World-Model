@@ -17,35 +17,31 @@ const STEPS = [
   },
   {
     n: "3",
-    title: "Context groups",
-    body: "Draw connections between folders on a visual canvas — \"Companies I've worked at\", \"Active client projects\" — and save. The groups become plain markdown files that any AI agent can read to answer questions like \"which companies have we worked with?\" without searching.",
+    title: "Facets and dreaming",
+    body: "Tag scopes with facets — pillars, platforms, disciplines, brands — to see the work from many angles at once. A dreaming agent reviews the workspace overnight and sends questions and fixes to your inbox; you accept, edit, reject or answer each one.",
   },
 ];
 
 const ARTIFACTS = [
   {
-    file: "_Workspace.yaml",
-    role: "Declares the workspace's layout — which folders hold work, where the journal, templates, and archive live. Layouts vary; the rules don't.",
-  },
-  {
     file: "AGENTS.md",
-    role: "The agent rulebook, generated at the root. Any AI tool pointed at the folder reads one file and knows the map, the rituals, and the rules. Uses the cross-vendor naming standard many agentic tools auto-discover.",
+    role: "The only protocol file at the root. Its header is the workspace config (owner, layout, rules); its body is the agent rulebook rendered from it. Any AI tool pointed at the folder reads one file and knows the map, the rituals, and the rules.",
   },
   {
     file: "_Overview.md",
     role: "One per important folder: what it is, who's involved, what's active, what happened recently. Agents read this before acting — context by address, not by search.",
   },
   {
-    file: "_Index.md",
-    role: "A generated map of every scope and context group, kept fresh automatically. Built for AI assistants that reach your Drive through search connectors and can't walk the folder tree themselves.",
+    file: "_Entities/",
+    role: "The cast: one file per person, organization, system or concept (including facets), with relationships — member-of or related-to, described in plain words.",
   },
   {
-    file: "Journal/",
+    file: "_Journal/",
     role: "A daily log where every change — human or AI — leaves an attributed one-line record. You can always reconstruct what agents did to your files, and when.",
   },
   {
-    file: "_Context/",
-    role: "Context group files: named, cross-cutting associations between folders, with notes. The authoritative answer to \"what belongs together?\".",
+    file: "_Proposals/",
+    role: "Where agents ask you questions and propose changes, and where your decisions are recorded. The dreaming inbox reads and writes it.",
   },
 ];
 
@@ -177,10 +173,10 @@ export default function AboutPage() {
           <p>
             <strong className="text-zinc-900">For your AI agents:</strong> context arrives by
             address instead of search. An agent entering the workspace reads the rulebook,
-            finds the right overview, consults the context groups, does its work, and leaves
+            finds the right overview, consults the entities and facets, does its work, and leaves
             an attributed trail — across vendors, with at most one line of configuration.
             Assistants that only have search connectors still benefit: self-describing names,
-            rich overviews, and the generated index make their retrieval dramatically better.
+            and rich overviews make their retrieval dramatically better.
           </p>
           <p>
             <strong className="text-zinc-900">For your team:</strong> when two people run the

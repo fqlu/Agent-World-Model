@@ -26,7 +26,7 @@ export default async function ModelPage({ params }: { params: Promise<{ id: stri
         <p className="mt-1 max-w-3xl text-sm text-zinc-600">
           The compiled projection of this workspace — entities, scopes, and the typed edges
           between them — assembled from the markdown into{" "}
-          <code className="font-mono text-xs">_Model.json</code>. This is what an agent loads to
+          the app&apos;s model API (v0.16: never stored in the Drive). This is what an agent loads to
           traverse the whole model at once.
         </p>
       </div>

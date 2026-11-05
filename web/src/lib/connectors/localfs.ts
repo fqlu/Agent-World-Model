@@ -21,7 +21,8 @@ export class LocalFsConnector implements Connector {
     const items = await fs.readdir(dir, { withFileTypes: true });
     const prefix = assertSafeRelPath(rel);
     return items
-      .filter((d) => !SKIP.has(d.name) && !d.name.startsWith(".") )
+      // "Icon\r" = macOS / Google Drive folder-icon files: not content
+      .filter((d) => !SKIP.has(d.name) && !d.name.startsWith(".") && d.name !== "Icon\r")
       .map((d) => ({
         name: d.name,
         path: prefix ? `${prefix}/${d.name}` : d.name,

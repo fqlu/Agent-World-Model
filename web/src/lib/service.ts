@@ -4,7 +4,7 @@ import { runAudit, AuditResult } from "./linter";
 import { buildScaffoldPlan, ScaffoldOptions } from "./scaffold";
 import { buildAdoptionPlan } from "./adopt";
 import { Op, applyOps, journalAgentActivity, OpResult } from "./ops";
-import { parseWorkspaceYaml } from "./workspace";
+import { readDecl, readMounts, resolveMounts, updateDecl } from "./config";
 import { normalizeIgnoreList, normalizeIgnorePath } from "./ignore";
 import { writeIndex } from "./index-gen";
 import { writeModel } from "./model-gen";
@@ -40,13 +40,23 @@ export async function runAuditSvc(wsId: number): Promise<{ auditId: number; resu
 
 export async function createProposalSvc(
   wsId: number,
-  kind: "scaffold" | "adopt",
+  kind: "scaffold" | "adopt" | "migrate",
 ): Promise<number> {
   const ws = q.getWorkspace(wsId);
   if (!ws) throw new Error(`Workspace ${wsId} not found`);
   let payload: PlanPayload;
   if (kind === "scaffold") {
     payload = { ops: buildScaffoldPlan(scaffoldOpts(wsId)), notes: [], manual: [] };
+  } else if (kind === "migrate") {
+    // v0.15 → v0.16 (SPEC §13): one reviewable plan; originals archived first
+    const { buildMigrationPlan } = await import("./migrate");
+    const o = scaffoldOpts(wsId);
+    const plan = await buildMigrationPlan(connectorFor(ws), o);
+    payload = {
+      ops: plan.ops,
+      notes: [...plan.notes, `Summary: ${Object.entries(plan.summary).map(([k, v]) => `${v} ${k}`).join(", ")}`],
+      manual: plan.manual,
+    };
   } else {
     payload = await buildAdoptionPlan(connectorFor(ws), scaffoldOpts(wsId));
   }
@@ -69,9 +79,7 @@ export async function applyProposalSvc(
 
   // Journal the application (SPEC §7.3). Best-effort — the apply itself stands.
   try {
-    const declRaw = await c.read("_Workspace.yaml");
-    const decl = declRaw ? parseWorkspaceYaml(declRaw) : null;
-    const journalMount = decl?.mounts?.journal ?? "Journal";
+    const journalMount = (await readMounts(c)).journal;
     const applied = results.filter((r) => !r.skipped && r.ok).length;
     const failed = results.filter((r) => !r.skipped && !r.ok).length;
     await journalAgentActivity(
@@ -132,13 +140,12 @@ export async function applySyncSvc(wsId: number): Promise<{
   // 3. journal the sync (skipped on first baseline to keep it quiet)
   if (!report.firstRun && diffCount(report.diff) > 0) {
     try {
-      const declRaw = await c.read("_Workspace.yaml");
-      const journal = (declRaw ? parseWorkspaceYaml(declRaw) : null)?.mounts?.journal ?? "Journal";
+      const journal = (await readMounts(c)).journal;
       const d = report.diff;
       await journalAgentActivity(
         c,
         journal,
-        `synced — ${d.modified.length} modified, ${d.added.length} added, ${d.removed.length} removed; projections refreshed`,
+        `synced — ${d.modified.length} modified, ${d.added.length} added, ${d.removed.length} removed`,
       );
     } catch {
       /* journal best-effort */
@@ -161,8 +168,7 @@ export async function getRulesSvc(wsId: number) {
   const ws = q.getWorkspace(wsId);
   if (!ws) throw new Error(`Workspace ${wsId} not found`);
   const c = connectorFor(ws);
-  const raw = await c.read("_Workspace.yaml");
-  const decl = raw ? parseWorkspaceYaml(raw) : null;
+  const decl = await readDecl(c);
   const { resolveRuleConfig } = await import("./rules");
   const cfg = resolveRuleConfig(decl);
   return {
@@ -171,12 +177,13 @@ export async function getRulesSvc(wsId: number) {
     houseRules: decl?.house_rules ?? [],
     ignore: normalizeIgnoreList(decl?.ignore),
     profile: ws.profile,
+    layout: decl?.layout ?? null,
   };
 }
 
-// Persist rule overrides + tunable conventions into _Workspace.yaml, then
-// regenerate AGENTS.md so the rulebook matches. Only non-default overrides are
-// written, keeping the file clean.
+// Persist rule overrides + tunable conventions + house rules into the config
+// header of AGENTS.md, which re-renders the rulebook from it (SPEC §9.1, §9.2).
+// Only non-default overrides are written, keeping the header clean.
 export async function saveRulesSvc(
   wsId: number,
   overrides: Record<string, string>,
@@ -186,114 +193,70 @@ export async function saveRulesSvc(
   const ws = q.getWorkspace(wsId);
   if (!ws) throw new Error(`Workspace ${wsId} not found`);
   const c = connectorFor(ws);
-  const YAML = (await import("yaml")).default;
-  const raw = await c.read("_Workspace.yaml");
-  if (!raw) throw new Error("Workspace has no _Workspace.yaml");
-  const doc = YAML.parse(raw) as Record<string, unknown>;
+  await updateDecl(
+    c,
+    (doc) => {
+      const cleanOverrides: Record<string, string> = {};
+      for (const [id, sev] of Object.entries(overrides)) {
+        if (["off", "error", "warn", "info"].includes(sev)) cleanOverrides[id] = sev;
+      }
+      const rulesBlock: Record<string, unknown> = {};
+      if (Object.keys(cleanOverrides).length) rulesBlock.overrides = cleanOverrides;
+      // v0.16: relationship predicates are fixed by the spec; only WIP sections are tunable
+      if (conventions.wip_required_sections?.length)
+        rulesBlock.conventions = { wip_required_sections: conventions.wip_required_sections };
+      if (Object.keys(rulesBlock).length) doc.rules = rulesBlock;
+      else delete doc.rules;
 
-  const cleanOverrides: Record<string, string> = {};
-  for (const [id, sev] of Object.entries(overrides)) {
-    if (["off", "error", "warn", "info"].includes(sev)) cleanOverrides[id] = sev;
-  }
-  const rulesBlock: Record<string, unknown> = {};
-  if (Object.keys(cleanOverrides).length) rulesBlock.overrides = cleanOverrides;
-  const conv: Record<string, unknown> = {};
-  if (conventions.relationship_predicates?.length)
-    conv.relationship_predicates = conventions.relationship_predicates;
-  if (conventions.wip_required_sections?.length)
-    conv.wip_required_sections = conventions.wip_required_sections;
-  if (Object.keys(conv).length) rulesBlock.conventions = conv;
-
-  if (Object.keys(rulesBlock).length) doc.rules = rulesBlock;
-  else delete doc.rules;
-
-  // House rules (§9.2): keep only ones with non-empty text
-  if (houseRules) {
-    const clean = houseRules
-      .filter((h) => h && typeof h.text === "string" && h.text.trim())
-      .map((h) => {
-        const out: Record<string, unknown> = { text: h.text.trim() };
-        if (h.severity && ["off", "error", "warn", "info"].includes(h.severity)) out.severity = h.severity;
-        if (h.check?.type === "filename_prefix" && Array.isArray(h.check.allowed) && h.check.allowed.length) {
-          out.check = { type: "filename_prefix", allowed: h.check.allowed, ...(h.check.applies_to ? { applies_to: h.check.applies_to } : {}) };
-        } else if (h.check?.type === "forbidden_substring" && Array.isArray(h.check.values) && h.check.values.length) {
-          out.check = { type: "forbidden_substring", values: h.check.values, ...(h.check.applies_to ? { applies_to: h.check.applies_to } : {}) };
-        }
-        return out;
-      });
-    if (clean.length) doc.house_rules = clean;
-    else delete doc.house_rules;
-  }
-
-  await c.write("_Workspace.yaml", YAML.stringify(doc), { overwrite: true });
-
-  await regenerateAgentsSvc(ws, c, YAML.stringify(doc), "rule config updated; AGENTS.md regenerated");
+      if (houseRules) {
+        const clean = houseRules
+          .filter((h) => h && typeof h.text === "string" && h.text.trim())
+          .map((h) => {
+            const out: Record<string, unknown> = { text: h.text.trim() };
+            if (h.severity && ["off", "error", "warn", "info"].includes(h.severity)) out.severity = h.severity;
+            if (h.check?.type === "filename_prefix" && Array.isArray(h.check.allowed) && h.check.allowed.length) {
+              out.check = { type: "filename_prefix", allowed: h.check.allowed, ...(h.check.applies_to ? { applies_to: h.check.applies_to } : {}) };
+            } else if (h.check?.type === "forbidden_substring" && Array.isArray(h.check.values) && h.check.values.length) {
+              out.check = { type: "forbidden_substring", values: h.check.values, ...(h.check.applies_to ? { applies_to: h.check.applies_to } : {}) };
+            }
+            return out;
+          });
+        if (clean.length) doc.house_rules = clean;
+        else delete doc.house_rules;
+      }
+    },
+    { workspaceName: ws.name, profile: ws.profile },
+  );
+  await journalQuiet(c, "rule config updated; AGENTS.md re-rendered");
   return { ok: true };
 }
 
-// Rebuild AGENTS.md from the workspace's own declaration (owner, house rules,
-// conventions, ignore list) and journal it. Best-effort: never fails a save.
-async function regenerateAgentsSvc(
-  ws: NonNullable<ReturnType<typeof q.getWorkspace>>,
-  c: ReturnType<typeof connectorFor>,
-  workspaceYaml: string,
-  journalMessage: string,
-) {
+async function journalQuiet(c: ReturnType<typeof connectorFor>, message: string) {
   try {
-    const decl = parseWorkspaceYaml(workspaceYaml);
-    const mounts = {
-      areas: decl?.mounts?.areas ?? [],
-      journal: decl?.mounts?.journal ?? "Journal",
-      templates: decl?.mounts?.templates ?? "Templates",
-      archive: decl?.mounts?.archive ?? "Archive",
-      context: decl?.mounts?.context,
-      entities: decl?.mounts?.entities,
-    };
-    const { renderAgentsMd } = await import("./scaffold");
-    const agents = renderAgentsMd(
-      {
-        workspaceName: ws.name,
-        ownerName: decl?.owner?.name ?? process.env.HUB_OWNER_NAME ?? ws.name,
-        ownerEmail:
-          decl?.owner?.email ?? process.env.HUB_OWNER_EMAIL ?? ws.account_email ?? "owner@unknown",
-        profile: ws.profile,
-      },
-      mounts,
-      decl,
-    );
-    await c.write("AGENTS.md", agents, { overwrite: true });
-    await journalAgentActivity(c, mounts.journal, journalMessage);
+    await journalAgentActivity(c, (await readMounts(c)).journal, message);
   } catch {
-    /* AGENTS regen / journal best-effort */
+    /* journal best-effort */
   }
 }
 
 export async function getIgnoreSvc(wsId: number): Promise<{ ignore: string[] }> {
   const ws = q.getWorkspace(wsId);
   if (!ws) throw new Error(`Workspace ${wsId} not found`);
-  const raw = await connectorFor(ws).read("_Workspace.yaml");
-  return { ignore: normalizeIgnoreList(raw ? parseWorkspaceYaml(raw)?.ignore : []) };
+  const decl = await readDecl(connectorFor(ws));
+  return { ignore: normalizeIgnoreList(decl?.ignore) };
 }
 
-// Persist the ignore list into _Workspace.yaml (the knowledge layer, not the
-// app DB) and regenerate AGENTS.md so agents see which paths are excluded.
+// Persist the ignore list into the AGENTS.md config header (the knowledge
+// layer, not the app DB); the rulebook re-renders so agents see the exclusions.
 export async function saveIgnoreSvc(wsId: number, paths: unknown): Promise<{ ignore: string[] }> {
   const ws = q.getWorkspace(wsId);
   if (!ws) throw new Error(`Workspace ${wsId} not found`);
   if (!Array.isArray(paths)) throw new Error("ignore must be a list of paths");
   const c = connectorFor(ws);
-  const YAML = (await import("yaml")).default;
-  const raw = await c.read("_Workspace.yaml");
-  if (!raw) throw new Error("Workspace has no _Workspace.yaml");
-  const decl = parseWorkspaceYaml(raw);
-  const { loadManifest } = await import("./spec");
-  const manifest = loadManifest();
-  const protectedFiles = new Set([
-    ...manifest.workspace.required_root_files,
-    ...(manifest.workspace.optional_root_files ?? []),
-  ]);
-  const m = decl?.mounts ?? {};
-  const mounts = [...(m.areas ?? []), m.journal, m.templates, m.archive, m.context, m.entities].filter(
+  const decl = await readDecl(c);
+  const mm = resolveMounts(decl);
+  const protectedFiles = new Set(["AGENTS.md"]);
+  const mounts = [...mm.areas, mm.journal, mm.templates, mm.archive, mm.entities, mm.proposals].filter(
     (x): x is string => Boolean(x),
   );
 
@@ -312,16 +275,17 @@ export async function saveIgnoreSvc(wsId: number, paths: unknown): Promise<{ ign
     if (!clean.includes(p)) clean.push(p);
   }
 
-  const doc = YAML.parseDocument(raw);
-  if (clean.length) doc.set("ignore", clean);
-  else doc.delete("ignore");
-  const text = doc.toString();
-  await c.write("_Workspace.yaml", text, { overwrite: true });
-  await regenerateAgentsSvc(
-    ws,
+  await updateDecl(
     c,
-    text,
-    clean.length ? `ignore list updated (${clean.join(", ")}); AGENTS.md regenerated` : "ignore list cleared; AGENTS.md regenerated",
+    (doc) => {
+      if (clean.length) doc.ignore = clean;
+      else delete doc.ignore;
+    },
+    { workspaceName: ws.name, profile: ws.profile },
+  );
+  await journalQuiet(
+    c,
+    clean.length ? `ignore list updated (${clean.join(", ")}); AGENTS.md re-rendered` : "ignore list cleared; AGENTS.md re-rendered",
   );
   return { ignore: clean };
 }
@@ -333,8 +297,7 @@ export async function exportOkfSvc(wsId: number) {
   const { exportOkfBundle } = await import("./okf-export");
   const result = await exportOkfBundle(c, ws.id, ws.name);
   try {
-    const declRaw = await c.read("_Workspace.yaml");
-    const journal = (declRaw ? parseWorkspaceYaml(declRaw) : null)?.mounts?.journal ?? "Journal";
+    const journal = (await readMounts(c)).journal;
     await journalAgentActivity(c, journal, `exported OKF bundle — ${result.concepts} concept(s)`);
   } catch {
     /* journal best-effort */
@@ -388,8 +351,7 @@ export async function bundleOptionsSvc(
   const ws = q.getWorkspace(wsId);
   if (!ws) throw new Error(`Workspace ${wsId} not found`);
   const c = connectorFor(ws);
-  const declRaw = await c.read("_Workspace.yaml");
-  const decl = declRaw ? parseWorkspaceYaml(declRaw) : null;
+  const decl = await readDecl(c);
   const scopes: string[] = [];
   async function walk(path: string, depth: number) {
     for (const e of await c.list(path)) {
@@ -405,9 +367,16 @@ export async function bundleOptionsSvc(
     if (await c.exists(area)) await walk(area, 1);
   }
   scopes.sort();
-  const { listGroups } = await import("./context");
-  const { groups } = await listGroups(c, "");
-  return { scopes, groups: groups.map((g) => ({ slug: g.slug, title: g.title })) };
+  if (decl?.layout === "v0.15") {
+    const { listGroups } = await import("./context");
+    const { groups } = await listGroups(c, "");
+    return { scopes, groups: groups.map((g) => ({ slug: g.slug, title: g.title })) };
+  }
+  // v0.16: "group" bundles slice by facet (an entity with attributes.facet)
+  const { listEntities } = await import("./entities");
+  const { entities } = await listEntities(c);
+  const facets = entities.filter((e) => e.attributes.facet);
+  return { scopes, groups: facets.map((e) => ({ slug: e.slug, title: e.name })) };
 }
 
 export async function createBundleSvc(
@@ -440,8 +409,7 @@ export async function createBundleSvc(
   });
   q.touchBundle(id, { concepts: result.concepts, entities: result.entities, scopes: result.scopes, groups: result.groups, references: result.references });
   try {
-    const declRaw = await c.read("_Workspace.yaml");
-    const journal = (declRaw ? parseWorkspaceYaml(declRaw) : null)?.mounts?.journal ?? "Journal";
+    const journal = (await readMounts(c)).journal;
     await journalAgentActivity(c, journal, `built OKF bundle "${name.trim()}" — ${result.concepts} concept(s)`);
   } catch {
     /* journal best-effort */
@@ -490,13 +458,7 @@ export async function regenerateIndexSvc(wsId: number): Promise<boolean> {
   } catch {}
   if (ok) {
     try {
-      const declRaw = await c.read("_Workspace.yaml");
-      const decl = declRaw ? parseWorkspaceYaml(declRaw) : null;
-      await journalAgentActivity(
-        c,
-        decl?.mounts?.journal ?? "Journal",
-        `${ws.name} — regenerated _Index.md`,
-      );
+      await journalAgentActivity(c, (await readMounts(c)).journal, `${ws.name} — regenerated _Index.md`);
     } catch {
       // journal is best-effort here too
     }

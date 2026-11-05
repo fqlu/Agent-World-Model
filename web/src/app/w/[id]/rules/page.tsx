@@ -23,7 +23,7 @@ export default async function RulesPage({ params }: { params: Promise<{ id: stri
         <p className="mt-1 max-w-3xl text-sm text-zinc-600">
           Every rule the audit enforces on this workspace, and the conventions behind them.
           Tune severity (or disable) per rule and edit the tunable conventions — changes save to{" "}
-          <code className="font-mono text-xs">_Workspace.yaml</code>, feed straight into the
+          <code className="font-mono text-xs">AGENTS.md</code> config header, feed straight into the
           audit, and regenerate <code className="font-mono text-xs">AGENTS.md</code> so agents
           read the same rules. Profile: <span className="font-mono">{data.profile}</span>.
         </p>

@@ -5,8 +5,9 @@ export type Mounts = {
   journal: string;
   templates: string;
   archive: string;
-  context?: string; // optional capability (SPEC §6.4)
+  context?: string; // legacy (v0.15) context groups — replaced by facets in v0.16
   entities?: string; // optional capability (SPEC §6.6)
+  proposals?: string; // optional capability (SPEC §6.10, v0.16)
 };
 
 export type RuleOverride = "off" | "error" | "warn" | "info";
@@ -23,6 +24,9 @@ export type HouseRule = {
 
 export type WorkspaceDecl = {
   spec_version?: string;
+  protocol?: string; // v0.16 header: "dcp/0.16"
+  layout?: "v0.16" | "v0.15"; // set by config.readDeclInfo (not stored)
+  about?: string; // v0.16: one line on what this workspace is
   profile?: string;
   owner?: { name?: string; email?: string };
   mounts?: Partial<Mounts> & { areas?: string[] };

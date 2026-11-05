@@ -1,6 +1,6 @@
 import YAML from "yaml";
 import { Connector } from "./connector";
-import { parseWorkspaceYaml } from "./workspace";
+import { readDecl, resolveMounts } from "./config";
 import { journalAgentActivity } from "./ops";
 
 export type GroupMember = { path: string; note?: string }; // path = immediate child folder NAME
@@ -57,10 +57,9 @@ export function serializeGroup(g: ContextGroup): string {
   return `---\n${front}\n---\n\n${g.description.trim()}\n`;
 }
 
-async function readDecl(c: Connector) {
-  const raw = await c.read("_Workspace.yaml");
-  return raw ? parseWorkspaceYaml(raw) : null;
-}
+// LEGACY (v0.15). Context groups were replaced by facets in v0.16 (SPEC §3.1,
+// §6.4). This module stays so v0.15 workspaces can still be read and migrated;
+// saving groups is refused on v0.16 workspaces.
 
 // The context directory NAME is fixed workspace-wide by the context mount.
 export async function contextDirName(c: Connector): Promise<string> {
@@ -102,25 +101,13 @@ export async function saveGroups(
   folderPath: string,
   groups: ContextGroup[],
 ): Promise<{ written: string[]; archived: string[] }> {
+  const decl0 = await readDecl(c);
+  if (decl0?.layout !== "v0.15") {
+    throw new Error("Context groups were replaced by facets in protocol v0.16 — add facets on scopes instead.");
+  }
   const dirName = await contextDirName(c);
   const dir = join(folderPath, dirName);
   await c.mkdir(dir);
-
-  // Saving at the workspace root: make sure the mount is declared
-  if (folderPath === "") {
-    const raw = await c.read("_Workspace.yaml");
-    if (raw) {
-      const doc = YAML.parse(raw) as Record<string, unknown> | null;
-      if (doc && typeof doc === "object") {
-        const mountsObj = (doc.mounts ?? {}) as Record<string, unknown>;
-        if (!mountsObj.context) {
-          mountsObj.context = dirName;
-          doc.mounts = mountsObj;
-          await c.write("_Workspace.yaml", YAML.stringify(doc), { overwrite: true });
-        }
-      }
-    }
-  }
 
   const written: string[] = [];
   for (const g of groups) {
@@ -132,8 +119,8 @@ export async function saveGroups(
   // Archive group files that no longer exist in the set
   const keep = new Set(groups.map((g) => `${g.slug}.md`));
   const archived: string[] = [];
-  const decl = await readDecl(c);
-  const archiveMount = decl?.mounts?.archive ?? "Archive";
+  const mounts = resolveMounts(decl0);
+  const archiveMount = mounts.archive;
   for (const e of await c.list(dir)) {
     if (e.kind !== "file" || !e.name.endsWith(".md") || keep.has(e.name)) continue;
     const dest = `${archiveMount}/${dir}/${e.name}`;
@@ -148,7 +135,7 @@ export async function saveGroups(
   try {
     await journalAgentActivity(
       c,
-      decl?.mounts?.journal ?? "Journal",
+      mounts.journal,
       `context groups saved at ${folderPath || "(root)"} — ${groups.length} group(s)${archived.length ? `, ${archived.length} archived` : ""}`,
     );
   } catch {
@@ -176,13 +163,8 @@ export async function folderSubtree(
 ): Promise<TreeNode[]> {
   const decl = await readDecl(c);
   const ctxName = decl?.mounts?.context ?? DEFAULT_CONTEXT_DIR;
-  const rootExclude = new Set(
-    [
-      decl?.mounts?.journal ?? "Journal",
-      decl?.mounts?.templates ?? "Templates",
-      decl?.mounts?.archive ?? "Archive",
-    ].filter(Boolean),
-  );
+  const mm = resolveMounts(decl);
+  const rootExclude = new Set([mm.journal, mm.templates, mm.archive].filter(Boolean));
   const out: TreeNode[] = [];
 
   async function walk(absPath: string, relPrefix: string, depth: number, parentRel: string | null) {

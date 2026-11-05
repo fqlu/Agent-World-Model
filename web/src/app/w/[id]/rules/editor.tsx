@@ -48,8 +48,7 @@ export default function RulesEditor({
   const [sev, setSev] = useState<Record<string, EffSeverity>>(
     Object.fromEntries(rules.map((r) => [r.id, r.severity])),
   );
-  const [predicates, setPredicates] = useState(conventions.relationshipPredicates.join(", "));
-  const [newPred, setNewPred] = useState("");
+  const [predicates] = useState(conventions.relationshipPredicates.join(", "));
   const [predUsage, setPredUsage] = useState<Record<string, number>>({});
   useEffect(() => {
     fetch(`/api/workspaces/${wsId}/entities`)
@@ -63,16 +62,6 @@ export default function RulesEditor({
       .catch(() => {});
   }, [wsId]);
   const predList = predicates.split(",").map((x) => x.trim()).filter(Boolean);
-  const addPred = () => {
-    const v = newPred.trim().toLowerCase().replace(/\s+/g, "-");
-    if (v && !predList.includes(v)) setPredicates([...predList, v].join(", "));
-    setNewPred("");
-  };
-  const removePred = (v: string) => {
-    const used = predUsage[v] ?? 0;
-    if (used > 0 && !window.confirm(`"${v}" is used by ${used} relationship(s) — removing it makes those RL-001 errors until they're re-predicated. Remove anyway?`)) return;
-    setPredicates(predList.filter((x) => x !== v).join(", "));
-  };
   const [wipSections, setWipSections] = useState(conventions.wipRequiredSections.join(", "));
   const [houseRules, setHouseRules] = useState<HouseRule[]>(initialHouseRules);
   const [status, setStatus] = useState<string | null>(null);
@@ -307,35 +296,27 @@ export default function RulesEditor({
         <h2 className="text-sm font-semibold text-zinc-900">Tunable conventions</h2>
         <div className="mt-2 space-y-3">
           <div className="block text-sm">
-            <span className="font-medium text-zinc-700">Relationship predicates</span>
+            <span className="font-medium text-zinc-700">Relationships</span>
             <span className="text-xs text-zinc-500">
-              {" "}— the closed vocabulary RL-001 enforces. Counts show how many
-              relationships use each; removing an in-use predicate turns those into errors.
+              {" "}— fixed by protocol v0.16: <code className="font-mono">member-of</code> (part of
+              the target) or <code className="font-mono">related-to</code> (anything else), with a
+              short description in <code className="font-mono">as</code> and optional{" "}
+              <code className="font-mono">since</code> / <code className="font-mono">until</code>.
             </span>
             <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
               {predList.map((v) => (
                 <span key={v} className="badge inline-flex items-center gap-1 bg-zinc-100 font-mono text-zinc-700">
                   {v}
                   <span className="text-zinc-400">{predUsage[v] ?? 0}</span>
-                  <button
-                    onClick={() => removePred(v)}
-                    title={`Remove "${v}"`}
-                    className="ml-0.5 text-zinc-400 hover:text-red-600"
-                  >
-                    ×
-                  </button>
                 </span>
               ))}
-              <input
-                value={newPred}
-                onChange={(e) => setNewPred(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), addPred())}
-                placeholder="add predicate…"
-                className="input w-36 font-mono text-xs"
-              />
-              <button onClick={addPred} disabled={!newPred.trim()} className="btn-secondary text-xs">
-                Add
-              </button>
+              {Object.keys(predUsage)
+                .filter((v) => !predList.includes(v))
+                .map((v) => (
+                  <span key={v} className="badge bg-red-50 font-mono text-red-700" title="Not in v0.16 — run the migration or edit the entity">
+                    {v} {predUsage[v]}
+                  </span>
+                ))}
             </div>
           </div>
           <label className="block text-sm">

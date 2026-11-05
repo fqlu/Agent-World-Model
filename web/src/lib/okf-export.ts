@@ -3,7 +3,8 @@ import path from "node:path";
 import crypto from "node:crypto";
 import YAML from "yaml";
 import { Connector } from "./connector";
-import { parseWorkspaceYaml, allowedForms, declaredAliases, parseFrontmatter } from "./workspace";
+import { allowedForms, declaredAliases, parseFrontmatter } from "./workspace";
+import { readDecl, resolveMounts } from "./config";
 import { listEntities } from "./entities";
 import { buildModel } from "./model-gen";
 
@@ -53,8 +54,7 @@ export async function exportOkfBundle(
   workspaceName: string,
   opts?: { slug?: string; filter?: BundleFilter; includeContent?: boolean },
 ): Promise<OkfResult> {
-  const declRaw = await c.read("_Workspace.yaml");
-  const decl = declRaw ? parseWorkspaceYaml(declRaw) : null;
+  const decl = await readDecl(c);
   const model = await buildModel(c);
   if (!model) throw new Error("Workspace has no declared topology — nothing to export");
 
@@ -85,13 +85,15 @@ export async function exportOkfBundle(
         .map((e) => e.to),
     );
   } else if (filter.kind === "group") {
-    const gnode = groupNodes.find(
-      (n) => n.id === `group:${filter.ref}` || n.id.endsWith(`/${filter.ref}`) || slug(n.label) === filter.ref,
-    );
-    if (!gnode) throw new Error(`Bundle group "${filter.ref}" not found`);
+    // v0.16: a "group" slice is a facet entity; legacy v0.15 group nodes still work
+    const gnode =
+      groupNodes.find(
+        (n) => n.id === `group:${filter.ref}` || n.id.endsWith(`/${filter.ref}`) || slug(n.label) === filter.ref,
+      ) ?? model.nodes.find((n) => n.id === `entity:${filter.ref}` && n.attributes?.facet);
+    if (!gnode) throw new Error(`Bundle group or facet "${filter.ref}" not found`);
     includedGroupIds = new Set([gnode.id]);
     const memberPaths = model.edges
-      .filter((e) => e.predicate === "in-group" && e.to === gnode.id)
+      .filter((e) => (e.predicate === "in-group" || e.predicate === "facet") && e.to === gnode.id)
       .map((e) => e.from.slice(6));
     sliceRoots = memberPaths;
     includedScopePaths = new Set(
@@ -325,7 +327,7 @@ export async function exportOkfBundle(
   } else if (filter.kind === "group") {
     sectionNames = null; // group slices keep the full log for now (cross-client by nature)
   }
-  await writeLog(c, decl?.mounts?.journal ?? "Journal", outDir, sectionNames);
+  await writeLog(c, resolveMounts(decl).journal, outDir, sectionNames);
 
   // ---- root index.md (reserved; only place okf_version lives) ----
   const sections = new Map<string, string[]>();

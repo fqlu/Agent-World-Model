@@ -5,8 +5,9 @@
  *   1. sync      — detect drift since last snapshot, refresh _Index/_Model
  *   2. audit     — full lint, stored as an audit row (health history)
  *   3. bundles   — rebuild every bundle IF drift was detected
- *   4. digest    — write _Digest.md at the workspace root: what changed,
- *                  what awaits review, what went stale, bundle freshness
+ *   4. digest    — what changed, what awaits review, what went stale, bundle
+ *                  freshness. v0.16: printed (a tooling view, never stored in
+ *                  the Drive); legacy v0.15 workspaces still get _Digest.md
  *
  * Quiet nights stay quiet: no drift → no bundle churn, no journal writes;
  * only the digest timestamp moves (excluded from sync/review/ST-004).
@@ -140,8 +141,13 @@ async function maintain(wsId: number): Promise<void> {
     ``,
   ].join("\n");
 
-  await c.write("_Digest.md", digest, { overwrite: true });
-  line(`digest written: _Digest.md (review: ${queue.items.length} pending, ${queue.flags.length} flagged)`);
+  const { readDecl } = await import("../src/lib/config");
+  if ((await readDecl(c))?.layout === "v0.15") {
+    await c.write("_Digest.md", digest, { overwrite: true });
+    line(`digest written: _Digest.md (review: ${queue.items.length} pending, ${queue.flags.length} flagged)`);
+  } else {
+    line(digest);
+  }
 }
 
 async function main() {

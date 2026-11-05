@@ -41,7 +41,7 @@ export async function runAuditAction(wsId: number) {
   redirect(`/w/${wsId}/audit/${auditId}`);
 }
 
-export async function createProposalAction(wsId: number, kind: "scaffold" | "adopt") {
+export async function createProposalAction(wsId: number, kind: "scaffold" | "adopt" | "migrate") {
   const pid = await createProposalSvc(wsId, kind);
   redirect(`/w/${wsId}/proposal/${pid}`);
 }

@@ -29,7 +29,7 @@ export default async function ProposalPage({
           ← {ws.name}
         </Link>
         <h1 className="mt-1 text-2xl font-semibold tracking-tight text-zinc-900">
-          {proposal.kind === "scaffold" ? "Scaffold" : "Adoption / repair"} proposal #{proposal.id}
+          {proposal.kind === "scaffold" ? "Scaffold" : proposal.kind === "migrate" ? "Migration to v0.16" : "Adoption / repair"} proposal #{proposal.id}
         </h1>
         <p className="mt-1 text-sm text-zinc-500">
           {proposal.created_at} · status: {proposal.status} · {plan.ops.length} operation(s)

@@ -2,9 +2,9 @@
 description: Organisation-neutral starting point — a generic Projects/ area, no draft lifecycle, no org rituals.
 default_topology:
   areas: [Projects]
-  journal: Journal
-  templates: Templates
+  journal: _Journal
+  templates: _Templates
   archive: Archive
-  context: _Context
   entities: _Entities
+  proposals: _Proposals
 root_file_allowance: []

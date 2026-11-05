@@ -29,7 +29,7 @@ export default async function ProfilesPage({
           <em>status flags</em>, extra root files, and <em>template overrides</em>. The protocol
           itself stays neutral; every profile here is yours to create, edit or delete. Day-to-day
           rules for one workspace live in its own{" "}
-          <code className="font-mono text-xs">_Workspace.yaml</code> (its Rules page), not here.
+          <code className="font-mono text-xs">AGENTS.md</code> config header (its Rules page), not here.
         </p>
       </div>
 

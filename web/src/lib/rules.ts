@@ -34,8 +34,9 @@ const GROUP: Record<string, string> = {
   NM: "Naming",
   JR: "Journal",
   AR: "Archive",
-  CX: "Context groups",
   EN: "Entities",
+  DC: "Decomposition",
+  TR: "Trust",
   RL: "Relationships",
   TK: "Tasks",
 };
@@ -69,12 +70,12 @@ export function resolveRuleConfig(decl: WorkspaceDecl | null): RuleConfig {
     rules,
     severityOf: (id) => sevMap.get(id) ?? "info",
     conventions: {
-      relationshipPredicates:
-        conv.relationship_predicates ?? m.relationships?.predicates ?? [],
+      // v0.16: fixed by the spec (member-of / related-to) — not tuned per workspace
+      relationshipPredicates: m.relationships?.predicates ?? ["member-of", "related-to"],
       wipRequiredSections:
         conv.wip_required_sections ?? m.collections.wip_notes.required_sections,
       pipeSeparator: " | ",
-      entityKinds: m.entities?.kinds ?? ["person", "system", "concept"],
+      entityKinds: m.entities?.kinds ?? ["person", "organization", "system", "concept"],
     },
   };
 }
@@ -94,7 +95,7 @@ export function renderRulesSummary(cfg: RuleConfig): string {
   }
   if (off.length) lines.push(`- **Disabled here:** ${off.map((r) => r.id).join(", ")}`);
   lines.push(
-    `- **Relationship vocabulary:** ${cfg.conventions.relationshipPredicates.join(", ")}`,
+    `- **Relationships:** ${cfg.conventions.relationshipPredicates.join(" / ")}, described with \`as\` (+ optional \`since\` / \`until\`)`,
   );
   lines.push(`- **WIP note sections:** ${cfg.conventions.wipRequiredSections.join(", ")}`);
   return lines.join("\n");

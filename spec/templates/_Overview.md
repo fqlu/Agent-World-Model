@@ -1,9 +1,10 @@
 ---
 # scope_type: workstream | project   — ongoing vs time-bound (§3.1).
 # Declare on workstream/project scopes directly under a client. Omit on the
-# client entity itself. Platform / discipline / brand / pillar are facets
-# (context groups), not folders.
+# client entity itself. Platform / discipline / brand / pillar are facets,
+# not folders: list facet entity slugs below (child scopes inherit them).
 scope_type: workstream
+facets: []
 ---
 # [Scope name]
 

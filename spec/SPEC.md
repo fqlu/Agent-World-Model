@@ -1,6 +1,6 @@
 # Drive Context Protocol — Specification
 
-**Version:** 0.15.0 (draft)
+**Version:** 0.16.0
 **Status:** 🟠 Draft — under review by James Lu
 **Reference implementation:** a personal knowledge-work Drive (`incubeta` profile)
 
@@ -35,6 +35,10 @@ A Drive that follows this spec is called a **workspace**.
 5. **Core vs profile.** Rules in this spec are universal. Organisation-specific
    rituals (e.g. Incubeta's `Draft_` lifecycle) live in a named **profile**
    (§10) layered on top.
+6. **Sources, not copies.** The protocol stores only canonical sources in the
+   workspace. Anything derivable — maps, graphs, digests, project lists — is
+   computed by tooling when asked. A derived file in the Drive is a second copy
+   that silently goes stale.
 
 Keywords MUST / SHOULD / MAY follow RFC 2119 usage. Every MUST and SHOULD maps
 to a lint rule in §9 and in `manifest.yaml`.
@@ -44,57 +48,59 @@ to a lint rule in §9 and in `manifest.yaml`.
 ## 2. Workspace topology (declarative)
 
 A workspace's folder layout is **data, not spec**. The spec fixes only the
-primitives — scopes (§3), collections (§4), context files (§6), and the three
-capabilities **journal**, **templates**, and **archive** — and each workspace
-declares where those primitives are mounted in a root topology manifest,
-`_Workspace.yaml`:
+primitives — scopes (§3), collections (§4), context files (§6), and the
+capabilities **journal**, **templates**, **archive** (required) and
+**entities**, **proposals** (optional) — and each workspace declares where they
+are mounted in the **YAML header of `AGENTS.md`**, the one protocol file at the
+workspace root:
 
-```yaml
-spec_version: 0.15.0
+```markdown
+---
+protocol: dcp/0.16
 profile: incubeta
+owner: { name: James Lu, email: james.lu@example.com }
+about: Workspace of James Lu — client delivery, presales and internal tooling.
 mounts:
   areas: [Clients, Internal]   # scope-bearing folders (≥1, any names)
-  journal: Journal             # memory capability (§7)
-  templates: Templates         # canonical templates for this workspace
-  archive: Archive             # non-destruction capability (§8)
-  context: _Context            # OPTIONAL: context groups (§6.4)
+  journal: _Journal            # agent activity log (§4.2, §7.3)
+  templates: _Templates        # the 4 canonical templates
+  archive: Archive             # superseded content (§8)
+  entities: _Entities          # OPTIONAL: the cast (§6.6)
+  proposals: _Proposals        # OPTIONAL: agent proposals + owner decisions (§6.10)
 ignore:                        # OPTIONAL: paths outside the protocol
   - Internal/Solutions/some-code-repo
+rules: { overrides: {}, conventions: {} }   # §9.1
+house_rules: []                              # §9.2
+---
+# AGENTS.md — Workspace Protocol
+…rulebook rendered from the header, the spec and the profile…
 ```
 
-- The workspace root MUST contain `_Workspace.yaml`, `AGENTS.md`, and
-  `_Overview.md`. `[ST-001]`
-- Every mount declared in `_Workspace.yaml` MUST exist. `[ST-002]`
-- The three capabilities — journal, templates, archive — MUST each be mounted
-  somewhere; their paths and names are free. Without them the memory (§7) and
-  safety (§8) contracts have no home. `[ST-003]`
-- The **context** capability (§6.4) is OPTIONAL. When declared, its mount must
-  exist like any other (`[ST-002]`) and its group files must be valid.
-- At least one **area** MUST be declared. Areas hold scopes; their names are
-  free (`Clients`, `Projects`, `Research`…). `[ST-003]`
+- The workspace root MUST contain `AGENTS.md` with a header that parses and
+  carries `protocol`, `owner` and `mounts`. `[ST-001]`
+- Every declared mount MUST exist. `[ST-002]`
+- Journal, templates and archive MUST be mounted, and at least one **area**
+  declared. Areas hold scopes; their names are free. `[ST-003]`
+- Protocol mounts SHOULD use a `_` prefix (`_Journal`, `_Templates`,
+  `_Entities`, `_Proposals`), so a workspace's protocol is exactly `AGENTS.md`
+  plus its `_` folders — it can be copied, upgraded or removed without touching
+  content. The archive holds superseded *content*, so it is not prefixed.
 - `ignore:` lists workspace-relative paths that are **outside the protocol**
   (a code repository, a tool's scratch output). An ignored path and everything
-  below it is skipped by the audit and by every tool that reads the tree
-  (repair proposals, index, world model, exports); the setting lives in the
-  workspace so it travels with it. Declared mounts and the root protocol files
-  cannot be ignored. `AGENTS.md` lists ignored paths in its Map.
-- Root items not declared in the manifest are flagged for triage. Profiles MAY
-  whitelist extra root files (e.g. `CLAUDE.md`). `[ST-004]`
-- `AGENTS.md` is generated from the spec + profile + `_Workspace.yaml` and
-  MUST stay in sync with it — its Map section *is* the declared topology, so
-  agents learn the layout by reading one file. Retrieval by address survives
-  because the address book is declared, not assumed. `[ST-005]`
+  below it is skipped by the audit and by every tool that reads the tree.
+  `AGENTS.md` cannot be ignored, nor can a declared mount.
+- Root items not declared are flagged for triage; v0.15 leftovers
+  (`_Workspace.yaml`, `_Overview.md`, `_Index.md`, `_Model.json`, `_Digest.md`,
+  `_Context/`) are flagged with a migration hint (§13). Profiles MAY whitelist
+  extra root files (e.g. `CLAUDE.md`). `[ST-004]`
+- **The header is canonical; the body is rendered.** Tooling edits the header
+  and re-renders the body from it. There is no second config file to keep in
+  sync.
 
-**Profiles ship starter topologies, not laws.** The `incubeta` profile default
-is `Clients/ + Internal/ + Journal/ + Templates/ + Archive/` (the reference
-workspace). A teammate might mount `Projects/ + Knowledge/` instead; both lint
+**Profiles ship starter topologies, not laws.** A profile might default to
+`Clients/ + Internal/ + _Journal/ + _Templates/ + _Entities/ + _Proposals/ +
+Archive/`; a teammate might mount `Projects/ + Knowledge/` instead; both lint
 clean, and both speak the same protocol.
-
-> **Divergence from reference:** the reference workspace keeps `CLAUDE.md` at
-> root with no root `_Overview.md` or `AGENTS.md`. Under this spec the agent
-> rulebook is the tool-agnostic `AGENTS.md`; a `CLAUDE.md` (allowed by the
-> Incubeta profile) should reduce to pointers at `AGENTS.md` plus
-> tool-specific notes.
 
 ---
 
@@ -118,9 +124,8 @@ whatever depth *you* choose to maintain — ceremony never exceeds value.
   do it when a folder is a living workstream whose context you'll maintain.
   The linter validates what exists; it never demands new overviews below
   entity level.
-- Content folders inherit their context from the nearest scope above them and
-  from context groups (§6.4) — wiring a content folder into a group is the
-  cheap way to give it semantics without maintaining a context file.
+- Content folders inherit their context from the nearest scope above them,
+  including that scope's effective facets (§3.1).
 - Scopes MAY contain working files directly, collections, child scopes, and
   content folders.
 
@@ -140,11 +145,27 @@ Every scope carries a **`scope_type`** in its `_Overview.md` frontmatter:
   client-level grouping if cross-cutting.
 
 That single ongoing-vs-time-bound split is the structural hierarchy. Every
-other way you'd want to see the work — **platform** (GA4, GTM, BigQuery),
-**discipline** (analytics, SEO, paid media), **brand**, and **strategic
-pillar/theme** — is a **facet, not a folder**: expressed with context groups
-(§6.4) and entity relationships (§6.7), never as a competing folder axis. A
-group MAY set `kind: pillar` to mark a strategic theme.
+other way you'd want to see the work — **platform** (GA4, BigQuery),
+**discipline** (analytics, SEO), **brand**, **strategic pillar** — is a
+**facet, not a folder**.
+
+A facet is an **entity** (§6.6) with `attributes.facet: pillar | platform |
+discipline | brand`. A scope joins a facet by listing its slug in its
+`_Overview.md` frontmatter:
+
+```yaml
+---
+scope_type: project
+facets: [cloud-data-platform, databricks]
+---
+```
+
+- **Facets inherit downward.** A scope's effective facets are its own plus
+  those of every ancestor scope. Declare a facet at the highest scope where it
+  is true.
+- "Everything in the Cloud Data Platform pillar" = every scope whose effective
+  facets include `cloud-data-platform`, plus each one's descendants.
+- Facet slugs MUST resolve to an entity. `[RL-002]`
 
 Why: a folder tree nests one way, so it can't show "all analytics work" or
 "the SEO pillar across clients" — facets and the world-model graph can, from
@@ -154,8 +175,8 @@ The agent's filing decision (also in `AGENTS.md`):
 
 1. Time-bound, with a goal and an end? → **project**.
 2. Ongoing thing we're retained for? → **workstream**.
-3. A platform, discipline, brand, or strategic theme? → **a facet** (context
-   group / relationship), not a folder.
+3. A platform, discipline, brand, or strategic theme? → **a facet**: an
+   entity, listed in the scope's `facets:`. Never a folder.
 4. Just a document or deliverable? → a **file** inside the relevant scope.
 
 `scope_type` SHOULD be declared on the workstream/project scopes directly under
@@ -182,10 +203,14 @@ Collections are folders of homogeneous, dated records.
 ### 4.2 Journal
 
 - Path: `<journal mount>/YYYY/YYYY-MM/YYYY-MM-DD.md`. `[JR-001]`
-- One file per day with activity. The journal is an **index**: one line per
-  event, each line linking to where the substance lives. No substance in the
-  journal itself. `[JR-002]`
-- The journal is also the **agent activity log** (§7.3).
+- One file per day with activity. The journal is the **agent activity log**
+  (§7.3) and nothing else: one line per change, linking to where the
+  substance lives — `- HH:MM · <agent> · <scope> — <what> → [link]`.
+- It is not a daily index (each scope's Recent activity covers that) and not
+  a request channel: questions and proposals for the owner go to the
+  proposals capability (§6.10).
+- Daily files limit how many agents write to one file at once. Agents append
+  and never rewrite existing lines.
 
 ---
 
@@ -224,9 +249,10 @@ the convention — it helps search — but are not linted): `[NM-001]`
 
 ### 5.2 Special files
 
-- Context files are prefixed `_` so they sort first: `_Overview.md`,
-  `_Tasks.md`, `_Index.md`. (`AGENTS.md` is unprefixed deliberately — it
-  follows the cross-vendor agent auto-discovery naming standard.)
+- Scope context files are prefixed `_` so they sort first: `_Overview.md`,
+  `_Tasks.md`. Protocol folders are prefixed `_` (`_Journal/`, `_Templates/`,
+  `_Entities/`, `_Proposals/`). `AGENTS.md` is unprefixed deliberately — it
+  follows the cross-vendor agent auto-discovery naming standard.
 - Dates in the names of promoted scopes MUST be ISO `YYYY-MM-DD` (or
   `YYYY-MM` for months); content folders are not linted. `[NM-002]`
 - Entity folder names MUST NOT contain pipes. `[NM-003]`
@@ -253,8 +279,12 @@ generator reads "What it is" when present):
 | `## Recent activity` | newest-first dated one-liners → links; keep ~10 |
 | `## Reference` | links: key docs, dashboards, production folders, related scopes |
 
-The **root** `_Overview.md` identifies the workspace owner and what the
-workspace covers. (Topology is declared in `_Workspace.yaml`, not here.)
+Overview frontmatter MAY carry `scope_type` (§3.1), `aliases` (§5.1),
+`facets` (§3.1) and trust fields (§12).
+
+There is no root `_Overview.md`. The owner and a one-line `about` live in the
+`AGENTS.md` header; the cross-workspace project list ("what's active?") is a
+tooling view built from scope overviews, not a hand-maintained copy of them.
 
 ### 6.2 `_Tasks.md` (optional per scope)
 
@@ -278,91 +308,41 @@ Open commitments that outlive a single meeting. Format:
 
 ### 6.3 `AGENTS.md` (workspace root, required)
 
-The agent-facing rulebook, generated by the provisioning tool from this spec,
-the active profile, and `_Workspace.yaml`. It declares the spec version and
-profile, renders the declared topology as its Map section, and condenses the
-operating rules (§7–8) so that *any* agent — regardless of vendor — can be
-pointed at the workspace root and behave correctly. `[ST-005]`
+The workspace's single protocol file: a **YAML header** (the workspace config,
+§2) and a **body** (the agent rulebook). Tooling renders the body from the
+header, the spec and the active profile: the map of mounts, the operating rules
+(§7–8), the enforced rules (§9.1), the house rules (§9.2), the journal line
+format, and how to raise a proposal. Any agent — regardless of vendor — can be
+pointed at the workspace root and behave correctly.
 
-The filename follows the cross-vendor `AGENTS.md` convention that agentic
-tools increasingly auto-discover, minimising per-agent configuration. Vendor
-files (`CLAUDE.md`, `GEMINI.md`…) SHOULD reduce to a pointer at `AGENTS.md`
-plus vendor-specific notes. (Renamed from `_PROTOCOL.md` in spec v0.5;
-adoption tooling archives the legacy file.)
+- Keep it short. It is loaded into every agent session, so every line costs
+  tokens on every run; it links to scope files rather than inlining them.
+- The filename follows the cross-vendor `AGENTS.md` convention that agentic
+  tools auto-discover. Vendor files (`CLAUDE.md`, `GEMINI.md`…) SHOULD reduce
+  to a pointer at `AGENTS.md` plus vendor-specific notes.
 
 ---
 
-### 6.4 Context groups (optional capability)
+### 6.4 (removed in v0.16 — context groups)
 
-The folder tree answers "where does X live"; **context groups** answer "what
-belongs together" — a semantic layer of cross-cutting, many-to-many
-associations between folders. Examples: *Companies I've worked at*, *MMM
-clients*, *Offline-conversions deployments*.
+Context groups are replaced by facets (§3.1). Migration (§13): each group
+becomes an entity with `attributes.facet`, and each member scope lists its
+slug in `facets:`.
 
-Groups are declared **per folder**. Any folder MAY contain a context
-directory (its name fixed workspace-wide by the `context` mount declaration,
-default `_Context`) holding one markdown file per group. A group's members are
-**descendant folders of the folder that contains the context directory**,
-referenced by path relative to that folder:
+### 6.5 Workspace map (tooling view)
 
-```markdown
-# at Clients/_Context/companies-i-worked-at.md
----
-name: companies-i-worked-at        # slug, kebab-case, matches filename
-title: Companies I've worked at
-members:
-  - path: Incubeta                  # = Clients/Incubeta
-    note: current employer, 2024–present
-  - path: Old Holdings/Previous Co  # any descendant depth is allowed
----
-
-Free-text description. Both humans and agents read this to understand what
-membership in this group means.
-```
-
-- A group file MUST have `name`, `title`, and a `members` list; each member's
-  `path` is a folder path relative to the folder containing the context
-  directory; `note` is optional. `[CX-001]`
-- Member paths SHOULD exist under that folder; a missing member is flagged,
-  not fatal (folders get renamed). `[CX-002]`
-- A folder may belong to any number of groups. v0.4 members are folders only.
-- Declare a group in the context directory of the **lowest common ancestor**
-  of its members — root-level groups can span the whole workspace; a
-  client-folder group stays local and travels with the folder.
-- **Inheritance flows down.** A folder's effective context is the set of
-  groups it is directly a member of, plus every group any of its ancestors is
-  a member of. Declare membership at the highest folder where it is true;
-  never repeat it for descendants.
-- The `context` mount in `_Workspace.yaml` declares the root level's context
-  directory and fixes the directory *name* used at every level.
-- Agents resolving a folder's context MUST check each ancestor level's context
-  directory for memberships. Expanding a group means: each member folder and
-  all of its descendants. Group files are the authoritative source of declared
-  associations — consult them before falling back to search.
-- Removing a group follows the archive rule (§8): its file moves to the
-  archive mount, never deleted.
-
-### 6.5 `_Index.md` (workspace root, generated, recommended)
-
-A single generated map of the workspace — every scope with its one-line "what
-it is", every context group with its members — regenerated by tooling whenever
-a repair plan is applied or context groups are saved.
-
-Its purpose is the **retrieval tier**: assistants that reach the workspace
-through embedding/search connectors (rather than agentic file access) cannot
-be relied on to walk the tree or read rulebooks, but a single high-recall
-document surfaces for almost any broad query about the workspace. `_Index.md`
-is the `llms.txt` pattern applied to a Drive.
-
-- `_Index.md` is a derived artifact: never edit it by hand, never treat it as
-  canonical — the tree and the context dirs are the source of truth.
-- It is exempt from ST-004 (it does not need declaring in `_Workspace.yaml`).
+Tooling serves a map of the workspace — every scope with its "What it is",
+every entity and facet — on demand: in the app, through its API, and in
+exported bundles (§12). It is **not stored in the Drive** (principle 6).
+Agents with file access orient from `AGENTS.md`, then list the areas and read
+scope overviews. Search-only assistants use exported bundles, whose `index.md`
+serves the `llms.txt` role.
 
 ### 6.6 Entities (optional capability) — the "cast" of the world model
 
 Scopes answer "where does work live"; **entities** answer "who and what are
 the things the work is about." An entity is a first-class, addressable node
-for a person, system, or concept that recurs across scopes — a colleague, a
+for a person, organization, system, or concept that recurs across scopes — a colleague, a
 GTM container, a cross-cutting topic. Entities turn facts that were buried in
 prose ("Sally Wilson — decision-maker", "GTM-WMW3QT") into nodes an agent can
 resolve consistently everywhere they appear.
@@ -374,7 +354,7 @@ resolve consistently everywhere they appear.
 # _Entities/sally-wilson.md
 ---
 name: Sally Wilson
-kind: person                       # person | system | concept
+kind: person                       # person | organization | system | concept
 aliases: [Sally]
 source: derived                    # derived (extracted) | asserted (human-confirmed)
 confirmed: 2026-06-10              # last time a human confirmed this is current
@@ -387,8 +367,12 @@ attributes:
 Free-text notes. Both humans and agents read this to understand the entity.
 ```
 
-- An entity file MUST have `name` and a `kind` of `person`, `system`, or
-  `concept`. `[EN-001]`
+- An entity file MUST have `name` and a `kind` of `person`, `organization`,
+  `system`, or `concept`. `[EN-001]` An **organization** is a company, client,
+  partner, vendor or agency; a **concept** is an idea, programme, theme or
+  pillar.
+- An entity used as a facet carries `attributes.facet: pillar | platform |
+  discipline | brand`.
 - The slug (`name` field) SHOULD match the filename. `[EN-002]`
 - **Derived-first.** Tooling seeds entities by extracting them from existing
   overviews (Key people, infrastructure lists); a human confirms and enriches.
@@ -403,51 +387,56 @@ Free-text notes. Both humans and agents read this to understand the entity.
 
 ### 6.7 Relationships (the "edges" of the world model)
 
-Entities are nouns; **relationships** are the typed verbs between them — the
-edges that turn a list of things into a model an agent can traverse. "Who
-leads Hanes? What does Bonds run on? Which deployments depend on this system?"
-are relationship queries.
+Relationships are stored as outgoing edges in the subject entity's
+frontmatter. **There are two predicates**; what the relationship *is* goes in a
+short description, `as`:
 
-- A relationship is stored as an **outgoing edge in the subject entity's
-  frontmatter**, so reading one entity reveals its connections:
-
-```markdown
+```yaml
 # _Entities/james-lu.md
----
-name: James Lu
-kind: person
 relations:
-  - predicate: leads
-    target: hanesbrands-hanes        # an entity slug
-    note: lead since 2024
-  - predicate: works-on
-    target: "Clients/Hanesbrands (Hanes)/Hanes | Offline CAPI"   # a scope path
----
+  - predicate: member-of            # member-of | related-to
+    target: "Clients/Hanesbrands (Hanes)/Hanes | Offline CAPI"
+    as: lead
+    since: 2024-03-01               # optional, ISO date
+  - predicate: member-of
+    target: incubeta
+    as: Analytics consultant
+    until: 2026-09-30               # optional; in the past = a former relationship
+  - predicate: related-to
+    target: amperity
+    as: uses as CDP
+    note: Live ~12 months.          # optional longer note
 ```
 
-- `predicate` MUST be drawn from the workspace's **closed vocabulary**
-  (manifest `relationships.predicates`; default: `leads`, `owns`, `works-on`,
-  `member-of`, `reports-to`, `uses`, `deployed-for`, `depends-on`,
-  `related-to`). A closed set keeps the graph queryable and dodges the
-  open-ontology maintenance trap. `[RL-001]`
-- `target` resolves to an **entity slug** if one matches, otherwise to a
-  **scope path** (workspace-relative). A target that resolves to neither is a
-  dangling edge — flagged, not fatal. `[RL-002]`
-- `note` is optional free text. Edges carry the subject entity's provenance.
-- The full graph (including inverse traversal — "who leads X?") is assembled
-  by tooling into the projection (§6.8); humans don't maintain back-links.
+- **`member-of`** — the subject is *part of* the target: a person in an
+  organization, team or project scope; an organization in a parent
+  organization; an entity in a facet.
+- **`related-to`** — any other connection. `as` is **required**: a few words
+  from the subject's point of view ("uses as CDP", "client", "partner on the
+  PoV", "owner").
+- **`as`** is shown on graph edges and read by agents. It is free text, so
+  there is no vocabulary to maintain and no wrong verb to pick. `note` holds
+  anything longer.
+- **Time**: `since` / `until` are optional ISO dates; an edge whose `until` has
+  passed is a *former* relationship.
+- **Record each edge once**, on the entity the sentence is naturally about.
+  Tooling shows inverses; don't add mirror edges.
+- `predicate` MUST be `member-of` or `related-to`. `[RL-001]` Targets (an entity
+  slug, else a scope path) SHOULD resolve; `related-to` edges SHOULD carry
+  `as`; dates SHOULD be ISO. `[RL-002]`
 
-### 6.8 `_Model.json` (workspace root, generated) — the world-model projection
+Why so few: in the reference workspace 37 of 89 edges were `related-to` even
+with seven specific verbs available, and several facts were recorded twice in
+opposite directions. Two structural predicates plus a description capture the
+same meaning with nothing to choose wrongly; the queries that matter ("who is
+on this project?", "what is in this pillar?", "who used to work here?") are
+membership queries.
 
-The structured, queryable snapshot of the whole world model: every node
-(entity or scope) and every edge (typed relationship, plus context-group
-membership), compiled from the markdown into one JSON document.
+### 6.8 World-model view (tooling)
 
-- It is the machine-readable twin of `_Index.md`: an agent loads `_Model.json`
-  to get the entire model at once and traverse it, rather than walking files.
-- Derived artifact — regenerated whenever entities, relationships, or context
-  groups change; never hand-edited; the files remain canonical.
-- Exempt from ST-004 (it does not need declaring in `_Workspace.yaml`).
+The queryable graph — entities, scopes, relationships, facet memberships — is
+computed by tooling and served through the app and its API. It is **not stored
+in the Drive**; the entity files and scope overviews remain the only source.
 
 ### 6.9 Freshness & the maintenance loop (app-maintained)
 
@@ -459,14 +448,12 @@ The maintenance loop keeps state current:
    in its own state (NOT in the Drive — it is rebuildable app bookkeeping).
    Comparing a fresh walk against the stored manifest yields the **drift**
    since last sync: files added, modified, removed.
-2. **Re-derive.** On sync, the derived artifacts (`_Index.md`, `_Model.json`)
-   are regenerated so the projection matches the files again.
-3. **Reflect (human/agent, not the tool).** Detection is deterministic;
-   *interpreting* the drift — proposing new entities, relationships, state
-   changes, activity lines — is reflection, which an agent does. The tool
-   emits a **reflection scaffold** (the list of changed files framed as a
-   task) for an agent to act on through the normal propose-then-apply flows.
-   The tool never invents semantic facts itself.
+2. **Re-derive.** Tooling recomputes its views (map, model, digest) from the
+   files. Nothing is written to the Drive.
+3. **Reflect (agent, out of band).** Interpreting drift — staleness,
+   contradictions, graph quality, overdue decisions, lessons — is done by a
+   reflection agent ("dreaming") that writes **proposals** (§6.10). Tooling
+   never invents semantic facts; the owner decides in the proposals inbox.
 
 This separation — deterministic detection + agent-driven reflection — keeps
 the core dependency-free and every model change human-reviewable.
@@ -490,15 +477,40 @@ Unreviewed agent output is not an error state: it simply sits in a lower
 trust tier (unverified) until reviewed — visible as such in the model and in
 every exported bundle. Drift never corrupts; it queues.
 
+### 6.10 Proposals (optional capability)
+
+The one channel through which agents ask the owner questions and propose
+changes, and through which the owner's decisions flow back.
+
+- Layout: `<proposals mount>/<agent>/` holding `YYYY-MM-DD.proposals.json`
+  (canonical), `YYYY-MM-DD.md` (readable rendering), `YYYY-MM-DD.decisions.json`
+  and `suppressions.json`.
+- **Single writer per file.** The proposing agent writes the proposals,
+  rendering and suppressions files; the owner's tooling writes the decisions
+  file. Nobody else writes either.
+- Schemas: `dcp-proposals/1` and `dcp-decisions/1`. Every item carries a stable
+  id, `lens` (`triage` | `hygiene`), `tier` (`auto` | `approve` | `you`),
+  evidence (path + exact quote), and either a `question` with options or small
+  `ops` (`replace`, `append_line`, `frontmatter`, `move`, `create`; never
+  `delete`), each edit carrying the target file's `base_md5`.
+- **Accepted edits apply immediately** through tooling, and only if the file
+  still matches `base_md5`. Answers and rejections go back to the agent on its
+  next run; a rejection is suppressed so it isn't proposed again, and a lesson
+  drawn from it is only ever *proposed*.
+- Structural changes (moves, renames, new scopes) are always `tier: you`
+  (§8 rule 5).
+
 ## 7. Memory
 
 The workspace gives agents three memory surfaces, from coarse to fine:
 
 1. **`_Overview.md` / Recent activity** — curated highlights. The first thing
    read when entering a scope; capped so it stays signal.
-2. **Journal** — the chronological record. "What happened on/around date X,
-   across everything?"
+2. **Journal** — the chronological agent activity log. "What changed, by
+   whom, around date X?"
 3. **WIP Notes + `_Tasks.md`** — full substance and open loops per scope.
+4. **Proposals** — open questions and pending changes for the owner, with the
+   decisions taken (§6.10).
 
 ### 7.3 Agent activity attribution
 
@@ -533,6 +545,10 @@ did to the workspace and when, with no tool-specific log access.
    descendant folder names and intra-workspace links; tools must do this
    atomically or not at all.
 7. **Ask when ambiguous.** Wrong-but-confident filing is worse than a question.
+8. **Ask through proposals.** Questions for the owner and changes that need
+   approval go to the proposals capability (§6.10), not into journal sections
+   or chat. Never write another agent's or the owner's file in the proposals
+   mount.
 
 ---
 
@@ -543,11 +559,10 @@ Severities: **error** (violates a MUST), **warn** (violates a SHOULD),
 
 | ID | Sev | Rule |
 |---|---|---|
-| ST-001 | error | Root contains `_Workspace.yaml`, `AGENTS.md`, `_Overview.md` |
-| ST-002 | error | Every mount declared in `_Workspace.yaml` exists |
+| ST-001 | error | Root contains `AGENTS.md` with a valid config header (`protocol`, `owner`, `mounts`) |
+| ST-002 | error | Every mount declared in the `AGENTS.md` header exists |
 | ST-003 | error | Journal, templates, and archive capabilities are mounted; ≥1 area declared |
-| ST-004 | warn | No undeclared loose files / top-level folders at root |
-| ST-005 | error | `AGENTS.md` in sync with `_Workspace.yaml` (version, profile, map) |
+| ST-004 | warn | No undeclared loose files / top-level folders at root (v0.15 leftovers get a migration hint) |
 | SC-001 | error | Every **entity** (depth-1 folder in an area) has `_Overview.md` |
 | CL-001 | error | WIP note files are named `YYYY-MM-DD.md` |
 | CL-002 | warn | WIP note follows template sections (Discussion/Decisions/Actions) |
@@ -556,19 +571,17 @@ Severities: **error** (violates a MUST), **warn** (violates a SHOULD),
 | NM-003 | error | Entity folder names contain no pipes |
 | TK-001 | warn | `_Tasks.md` items follow the open/done format |
 | JR-001 | error | Journal files at `<journal mount>/YYYY/YYYY-MM/YYYY-MM-DD.md` |
-| JR-002 | info | Journal lines link out (index, not substance) |
 | JR-003 | warn | File-changing agent sessions appear in `## Agent activity` |
 | AR-001 | error | `Archive/` mirrors original paths; nothing deleted |
-| CX-001 | error | Context group files have valid `name`, `title`, `members` |
-| CX-002 | warn | Context group member paths exist under the declaring folder |
-| EN-001 | error | Entity files have valid `name` and `kind` (person/system/concept) |
+| EN-001 | error | Entity files have valid `name` and `kind` (person/organization/system/concept) |
 | EN-002 | warn | Entity slug (name) matches filename |
-| RL-001 | error | Relationship `predicate` is in the workspace vocabulary |
-| RL-002 | warn | Relationship `target` resolves to an entity or existing scope |
+| RL-001 | error | Relationship `predicate` is `member-of` or `related-to` |
+| RL-002 | warn | Relationship targets and scope `facets` resolve; `related-to` has `as`; `since`/`until` are ISO dates |
 | DC-001 | warn | Workstream/project scopes (depth-2) declare a `scope_type` (§3.1) |
 | HR-n | (per rule) | Workspace house-rule check failed (§9.2; default warn) |
 
-Removed in v0.6 (content-by-default pivot): SC-002 (per-type subfolders),
+Removed in v0.16: ST-005 (single config file), CX-001/CX-002 (context groups
+→ facets), JR-002 (the journal is a log). Removed in v0.6 (content-by-default pivot): SC-002 (per-type subfolders),
 SC-003 (asset registration), SC-004 (unclassifiable folders), OV-001
 (required overview sections), OV-002 (recent-activity cap). Content folders
 are not lint subjects; overview content is free-form.
@@ -577,7 +590,7 @@ are not lint subjects; overview content is free-form.
 
 The table above is the **default** ruleset (from the core spec + active
 profile). A workspace MAY tune it for its own needs by declaring a `rules:`
-block in `_Workspace.yaml`:
+block in the `AGENTS.md` header:
 
 ```yaml
 rules:
@@ -585,14 +598,13 @@ rules:
     NM-002: off              # this workspace doesn't enforce ISO dates
     JR-002: warn             # promote journal-index hygiene from info to warn
   conventions:               # tune the parameterised checks
-    relationship_predicates: [leads, owns, uses, depends-on]   # narrower vocab
     wip_required_sections: [Discussion, Decisions, Actions]
 ```
 
 - An override sets a rule's severity to `error`/`warn`/`info`, or `off` to
   disable it for this workspace. Unlisted rules keep their default severity.
-- `conventions` tune the data-driven checks (the relationship vocabulary that
-  RL-001 enforces; the WIP-note sections CL-002 looks for).
+- `conventions` tune the data-driven checks (the WIP-note sections CL-002
+  looks for). Relationship predicates are fixed by the spec (§6.7).
 - The audit reads this block, so tuning takes effect immediately. The
   generated `AGENTS.md` includes an **Enforced rules** section rendered from
   the effective config, so agents and the linter always agree.
@@ -603,7 +615,7 @@ rules:
 ### 9.2 House rules (workspace-authored, natural language)
 
 Beyond the built-in rules, a workspace authors its own in plain language under
-`house_rules:` in `_Workspace.yaml`:
+`house_rules:` in the `AGENTS.md` header:
 
 ```yaml
 house_rules:
@@ -647,7 +659,10 @@ profile is custom, defined by the implementation outside the spec (the
 reference app keeps them in `profiles/<name>/profile.yaml` + `templates/` and
 manages them from its Profiles page). When a workspace names no profile, or one
 that doesn't exist, the manifest's `baseline` applies — generic topology
-(`Projects/` + capabilities), no org rituals, no client vocabulary.
+(`Projects/` + capabilities), no org rituals, no client vocabulary. Starter
+topologies use `_Journal/`, `_Templates/`, `_Entities/`, `_Proposals/` and
+`Archive/`; a profile's `templates/` overrides at most the four workspace
+templates (overview, tasks, WIP note, entity) plus the `AGENTS.md` body.
 
 The reference implementation ships two example profiles: **`core`**, which
 mirrors the baseline, and **`incubeta`**, which adds:
@@ -722,9 +737,9 @@ generated bundles claim `okf_version`.
   of concept documents, each with a required `type`, plus reserved `index.md`
   and `log.md`. A workspace produces MANY named bundles: whole-workspace, one
   client's subtree (entities, groups, and journal log sliced to match), or
-  one context group's members. Entities → concepts typed by kind; scopes →
+  one facet's member scopes. Entities → concepts typed by kind; scopes →
   `Workstream`/`Project`/`Scope` concepts from their overviews; context
-  groups → `Group` concepts; house rules → a `Reference` concept so consuming
+  facets → concepts of their entity kind, with member scopes linked; house rules → a `Reference` concept so consuming
   agents inherit them. Trust fields export as-is; `timestamp` is emitted only
   as a v0.1 fallback when no `generated` stamp exists. Typed relationships
   export as bundle-relative links (OKF-valid) **and** a `dcp_relations` extra
@@ -739,3 +754,40 @@ generated bundles claim `okf_version`.
   read/write inside the structure. Modules must follow §8 like any agent.
 - **Non-markdown context** — Sheets/Docs/Slides are first-class *content* but
   not *context*; context files are markdown only.
+
+## 13. Migrating v0.15 → v0.16
+
+Tooling migrates a workspace through one reviewable plan (the reference app's
+"Migrate to v0.16" proposal, or `npm run migrate -- --root <folder>`). Nothing
+is deleted: every file the plan overwrites is first copied to
+`<archive>/_protocol-v0.15/<path>`, and retired protocol files are moved there.
+
+1. Merge `_Workspace.yaml` into the `AGENTS.md` header (owner, mounts, ignore,
+   rule overrides minus removed rules, house rules); take `about` from the root
+   overview's "What it is"; re-render the body.
+2. Turn each context group into a facet entity (`attributes.facet: pillar` for
+   pillar groups; plain groups are flagged for a human to classify) and add its
+   slug to each member scope's `facets:`. Members that are content folders are
+   listed for a human.
+3. Rename the journal and templates mounts to `_Journal/` and `_Templates/`;
+   keep the 4 templates and archive the rest.
+4. Archive `_Workspace.yaml`, the root `_Overview.md`, `_Index.md`,
+   `_Model.json`, `_Digest.md` and every `_Context/` directory.
+5. Relationships: map each edge, drafting `as` from the old predicate and note —
+   `leads` → `member-of` (as: lead); `works-on` → `member-of`;
+   `previously-member-of` → `member-of` + `until`; `owns` → `member-of` (scope)
+   or `related-to` (as: owner); `uses` / `provides` / `depends-on` /
+   `reports-to` → `related-to`; `deployed-for` is dropped when the inverse
+   `uses` edge exists. `concept` entities that are clearly organizations
+   (an `industry` attribute, people who are members of them, or a client /
+   partner / vendor role) become `organization`.
+6. Rewrite inbound markdown links to moved paths. Journal files keep their
+   depth, so their outbound links are unchanged.
+7. Journal the migration. Agents whose prompts hard-code old paths (journal,
+   root overview, index, model, `_Workspace.yaml`, `_Context/`) must be
+   updated; open "Needs review" items in old journal files are carried into
+   proposals by the next dreaming run rather than rewritten.
+
+During migration, tooling reads both layouts: a v0.15 workspace audits with an
+ST-001 "migrate" finding and can be viewed, but its config is only editable
+after migrating.
