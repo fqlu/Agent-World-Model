@@ -225,7 +225,7 @@ export async function saveRulesSvc(
         else delete doc.house_rules;
       }
     },
-    { workspaceName: ws.name, profile: ws.profile },
+    { workspaceName: ws.name, profile: ws.profile, root: ws.root },
   );
   await journalQuiet(c, "rule config updated; AGENTS.md re-rendered");
   return { ok: true };
@@ -237,6 +237,62 @@ async function journalQuiet(c: ReturnType<typeof connectorFor>, message: string)
   } catch {
     /* journal best-effort */
   }
+}
+
+// Dreaming settings (spec/DREAMING.md) live in the AGENTS.md header; saving
+// re-renders AGENTS.md and the dreaming brief.
+export async function getDreamingSvc(wsId: number) {
+  const ws = q.getWorkspace(wsId);
+  if (!ws) throw new Error(`Workspace ${wsId} not found`);
+  const c = connectorFor(ws);
+  const decl = await readDecl(c);
+  const { resolveDreaming, briefPath, kickoffMessage } = await import("./dreaming");
+  const ctx = { workspaceName: ws.name, root: ws.root };
+  const path = briefPath(decl);
+  return {
+    layout: decl?.layout ?? null,
+    settings: resolveDreaming(decl, ctx),
+    briefPath: path,
+    briefExists: await c.exists(path),
+    kickoff: kickoffMessage(decl, ctx),
+  };
+}
+
+export async function saveDreamingSvc(wsId: number, patch: Record<string, unknown>) {
+  const ws = q.getWorkspace(wsId);
+  if (!ws) throw new Error(`Workspace ${wsId} not found`);
+  const c = connectorFor(ws);
+  const allowed = ["agent_name", "mode", "runtime", "drive_path", "timezone", "nightly", "weekly", "report_channel", "budget", "other_agents", "notes"];
+  await updateDecl(
+    c,
+    (doc) => {
+      const cur = (doc.dreaming ?? {}) as Record<string, unknown>;
+      for (const k of allowed) {
+        if (!(k in patch)) continue;
+        const v = patch[k];
+        if (v === "" || v === null || (Array.isArray(v) && !v.length)) delete cur[k];
+        else cur[k] = v;
+      }
+      if (Object.keys(cur).length) doc.dreaming = cur;
+      else delete doc.dreaming;
+    },
+    { workspaceName: ws.name, profile: ws.profile, root: ws.root },
+  );
+  await journalQuiet(c, "dreaming settings updated; AGENTS.md and the dreaming brief re-rendered");
+  return getDreamingSvc(wsId);
+}
+
+// Re-generate just the brief (e.g. after an app upgrade changed the template).
+export async function regenerateDreamingBriefSvc(wsId: number) {
+  const ws = q.getWorkspace(wsId);
+  if (!ws) throw new Error(`Workspace ${wsId} not found`);
+  const c = connectorFor(ws);
+  const decl = await readDecl(c);
+  if (decl?.layout !== "v0.16") throw new Error("Migrate this workspace to v0.16 first");
+  const { writeDreamingBrief } = await import("./dreaming");
+  const path = await writeDreamingBrief(c, { workspaceName: ws.name, root: ws.root });
+  await journalQuiet(c, `dreaming brief re-generated → ${path}`);
+  return getDreamingSvc(wsId);
 }
 
 export async function getIgnoreSvc(wsId: number): Promise<{ ignore: string[] }> {
@@ -281,7 +337,7 @@ export async function saveIgnoreSvc(wsId: number, paths: unknown): Promise<{ ign
       if (clean.length) doc.ignore = clean;
       else delete doc.ignore;
     },
-    { workspaceName: ws.name, profile: ws.profile },
+    { workspaceName: ws.name, profile: ws.profile, root: ws.root },
   );
   await journalQuiet(
     c,

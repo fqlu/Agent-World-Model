@@ -124,7 +124,7 @@ export function renderHeader(h: Record<string, unknown>): string {
 export async function updateDecl(
   c: Connector,
   mutate: (header: Record<string, unknown>) => void,
-  ctx: { workspaceName: string; profile: string; ownerName?: string; ownerEmail?: string },
+  ctx: { workspaceName: string; profile: string; ownerName?: string; ownerEmail?: string; root?: string },
 ): Promise<WorkspaceDecl> {
   const info = await readDeclInfo(c);
   if (info.source === "workspace-yaml") {
@@ -153,5 +153,12 @@ export async function updateDecl(
     header,
   );
   await c.write(AGENTS_FILE, text, { overwrite: true });
+  // The dreaming brief is rendered from the same header (spec/DREAMING.md)
+  try {
+    const { writeDreamingBrief } = await import("./dreaming");
+    await writeDreamingBrief(c, { workspaceName: ctx.workspaceName, root: ctx.root });
+  } catch {
+    /* best-effort: the config edit stands */
+  }
   return decl;
 }

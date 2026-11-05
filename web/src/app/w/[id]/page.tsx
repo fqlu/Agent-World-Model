@@ -88,6 +88,11 @@ export default async function WorkspacePage({ params }: { params: Promise<{ id: 
         </span>
         <span className="ml-auto text-violet-600">→</span>
       </Link>
+      <p className="-mt-6 text-right text-xs">
+        <Link href={`/w/${ws.id}/dreaming`} className="text-violet-600 hover:underline">
+          Set up the dreaming agent →
+        </Link>
+      </p>
 
       <Link
         href={`/w/${ws.id}/review`}

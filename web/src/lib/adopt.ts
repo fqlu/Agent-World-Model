@@ -1,7 +1,9 @@
 import { Connector, parentPath, baseName } from "./connector";
 import { loadManifest, loadTemplate } from "./spec";
 import { allowedForms, checkPipeName, splitPipe, separatorOf, Mounts } from "./workspace";
-import { readDeclInfo, resolveMounts, versionToProtocol } from "./config";
+import { readDeclInfo, resolveMounts, versionToProtocol, headerToDecl } from "./config";
+import { briefPath, renderDreamingBrief } from "./dreaming";
+import { buildHeader } from "./scaffold";
 import { Op } from "./ops";
 import { runAudit, Finding } from "./linter";
 import {
@@ -140,6 +142,19 @@ export async function buildAdoptionPlan(
         selected: true,
       });
     }
+  }
+
+  // The dreaming agent's brief (spec/DREAMING.md), from the (new or existing) header
+  {
+    const d = declared ? decl : headerToDecl(buildHeader(opts, mounts));
+    ops.push({
+      action: "write",
+      path: briefPath(d),
+      content: renderDreamingBrief(d, { workspaceName: opts.workspaceName }),
+      overwrite: true,
+      note: (await c.exists(briefPath(d))) ? "Re-generate the dreaming agent's brief" : "Write the dreaming agent's brief (spec/DREAMING.md)",
+      selected: true,
+    });
   }
 
   // Entity overviews (the only mandatory context anchor) + naming repairs

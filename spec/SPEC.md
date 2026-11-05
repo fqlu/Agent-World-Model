@@ -499,6 +499,12 @@ changes, and through which the owner's decisions flow back.
   drawn from it is only ever *proposed*.
 - Structural changes (moves, renames, new scopes) are always `tier: you`
   (§8 rule 5).
+- **Dreaming is part of the protocol.** Tooling generates the dreaming agent's
+  brief at `<proposals mount>/dreaming/INSTRUCTIONS.md` from the spec template
+  and the optional `dreaming:` block of the `AGENTS.md` header (agent name,
+  mode, runtime, schedule, report channel, owner notes…). It is the only text
+  the dreaming agent follows as instructions; nobody edits it by hand. Full
+  definition: `DREAMING.md`.
 
 ## 7. Memory
 

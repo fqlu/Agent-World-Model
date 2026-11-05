@@ -27,6 +27,7 @@ export type WorkspaceDecl = {
   protocol?: string; // v0.16 header: "dcp/0.16"
   layout?: "v0.16" | "v0.15"; // set by config.readDeclInfo (not stored)
   about?: string; // v0.16: one line on what this workspace is
+  dreaming?: Record<string, unknown>; // v0.16: dreaming agent settings (spec/DREAMING.md)
   profile?: string;
   owner?: { name?: string; email?: string };
   mounts?: Partial<Mounts> & { areas?: string[] };

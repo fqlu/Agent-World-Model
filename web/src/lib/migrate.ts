@@ -7,6 +7,7 @@ import { readDeclInfo, headerToDecl, versionToProtocol } from "./config";
 import { parseGroupFile, DEFAULT_CONTEXT_DIR } from "./context";
 import { slugify } from "./entities";
 import { renderAgentsMd, TEMPLATE_FILES } from "./scaffold";
+import { briefPath, renderDreamingBrief } from "./dreaming";
 import { Op } from "./ops";
 
 // Migration v0.15 → v0.16 (SPEC §13), as ONE reviewable plan of ops. Nothing
@@ -415,6 +416,16 @@ export async function buildMigrationPlan(c: Connector, opts: MigrationOptions): 
     ),
     overwrite: true,
     note: "AGENTS.md becomes the config file: header (from _Workspace.yaml + root overview) + re-rendered rulebook",
+    selected: true,
+  });
+
+  // the dreaming agent's brief (spec/DREAMING.md)
+  writeOps.push({
+    action: "write",
+    path: briefPath(newDecl),
+    content: renderDreamingBrief(newDecl, { workspaceName: opts.workspaceName }),
+    overwrite: true,
+    note: "Write the dreaming agent's brief (spec/DREAMING.md)",
     selected: true,
   });
 

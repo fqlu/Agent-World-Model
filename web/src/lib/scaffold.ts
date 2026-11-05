@@ -4,7 +4,8 @@ import { normalizeIgnoreList } from "./ignore";
 import { Mounts, WorkspaceDecl } from "./workspace";
 import { resolveRuleConfig, renderRulesSummary } from "./rules";
 import { Op } from "./ops";
-import { protocolToVersion, renderHeader, versionToProtocol } from "./config";
+import { headerToDecl, protocolToVersion, renderHeader, versionToProtocol } from "./config";
+import { briefPath, renderDreamingBrief } from "./dreaming";
 
 export type ScaffoldOptions = {
   workspaceName: string;
@@ -166,5 +167,14 @@ export function buildScaffoldPlan(opts: ScaffoldOptions): Op[] {
       selected: true,
     });
   }
+  const decl = headerToDecl(buildHeader(opts, mounts));
+  ops.push({
+    action: "write",
+    path: briefPath(decl),
+    content: renderDreamingBrief(decl, { workspaceName: opts.workspaceName }),
+    overwrite: true,
+    note: "Write the dreaming agent's brief (spec/DREAMING.md)",
+    selected: true,
+  });
   return ops;
 }
