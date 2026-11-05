@@ -1,5 +1,6 @@
 import { Connector, Entry } from "./connector";
 import { loadManifest } from "./spec";
+import { resolveProfile } from "./profiles";
 import { resolveRuleConfig } from "./rules";
 import { parseGroupFile, DEFAULT_CONTEXT_DIR } from "./context";
 import { parseEntityFile } from "./entities";
@@ -10,7 +11,8 @@ import {
   allowedForms,
   declaredAliases,
   checkPipeName,
-  PIPE,
+  splitPipe,
+  separatorOf,
 } from "./workspace";
 
 export type Finding = {
@@ -50,7 +52,7 @@ const NON_ISO_DATE = /\b(\d{1,2}[./]\d{1,2}[./]\d{4}|\((January|February|March|A
 // context machinery below entity level.
 export async function runAudit(c: Connector, profileName = "incubeta"): Promise<AuditResult> {
   const manifest = loadManifest();
-  const profile = manifest.profiles[profileName] ?? {};
+  const profile = resolveProfile(profileName);
   const findings: Finding[] = [];
   const stats: AuditStats = {
     errors: 0, warns: 0, infos: 0, scopes: 0, overviews: 0, wipNotes: 0, journalDays: 0, groups: 0,
@@ -327,12 +329,12 @@ export async function runAudit(c: Connector, profileName = "incubeta"): Promise<
         continue;
       }
 
-      const lastSegment = child.name.split(PIPE).pop() ?? child.name;
+      const lastSegment = splitPipe(child.name).pop() ?? child.name;
       const pipeCheck = checkPipeName(child.name, chain);
 
       if (lastSegment === WIP_SUFFIX) {
         if (!pipeCheck.ok) {
-          add("NM-001", child.path, `WIP Notes folder should be named "${pipeCheck.expectedPrefix}${PIPE}${WIP_SUFFIX}"`);
+          add("NM-001", child.path, `WIP Notes folder should be named "${pipeCheck.expectedPrefix}${separatorOf(child.name)}${WIP_SUFFIX}"`);
         }
         await checkWipFolder(child);
         continue;
@@ -347,7 +349,7 @@ export async function runAudit(c: Connector, profileName = "incubeta"): Promise<
         stats.overviews++;
         scopeOverviewMd = await c.read(`${child.path}/${manifest.scopes.context_file}`);
         if (!pipeCheck.ok) {
-          add("NM-001", child.path, `Scope name should start with "${pipeCheck.expectedPrefix}${PIPE}…" mirroring its ancestry`);
+          add("NM-001", child.path, `Scope name should start with "${pipeCheck.expectedPrefix}${separatorOf(child.name)}…" mirroring its ancestry`);
         }
         if (NON_ISO_DATE.test(child.name)) {
           add("NM-002", child.path, `Scope name contains a non-ISO date: "${child.name}"`);

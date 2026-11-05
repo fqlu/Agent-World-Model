@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { q } from "@/lib/db";
 import { getRulesSvc } from "@/lib/service";
 import RulesEditor from "./editor";
+import IgnorePanel from "./ignore-panel";
 
 export const dynamic = "force-dynamic";
 
@@ -27,6 +28,7 @@ export default async function RulesPage({ params }: { params: Promise<{ id: stri
           read the same rules. Profile: <span className="font-mono">{data.profile}</span>.
         </p>
       </div>
+      <IgnorePanel wsId={ws.id} initial={data.ignore} />
       <RulesEditor
         wsId={ws.id}
         rules={data.rules}

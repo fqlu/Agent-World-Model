@@ -39,7 +39,13 @@ export default async function WorkspacePage({ params }: { params: Promise<{ id: 
         <p className="mt-1 text-xs text-zinc-500">
           {ws.kind === "local" ? "Local folder" : `Google Drive · ${ws.account_email}`} ·{" "}
           <span className="font-mono">{ws.root}</span> · profile{" "}
-          <span className="font-mono">{ws.profile}</span>
+          {ws.profile ? (
+            <Link href={`/profiles/${ws.profile}`} className="font-mono hover:text-indigo-600 hover:underline">
+              {ws.profile}
+            </Link>
+          ) : (
+            <span className="font-mono">none</span>
+          )}
         </p>
       </div>
 

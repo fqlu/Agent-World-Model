@@ -1,0 +1,23 @@
+# Profile: incubeta — format documented in profiles/README.md
+description: Incubeta client-services workspace — Clients/ + Internal/ areas, Draft_ → [INT]/[EXT] lifecycle, status flags.
+default_topology:           # starter, not law — workspaces may declare otherwise
+  areas: [Clients, Internal]
+  journal: Journal
+  templates: Templates
+  archive: Archive
+  context: _Context
+  entities: _Entities
+draft_lifecycle:
+  working_prefix: "Draft_"
+  production_prefixes: ["[INT]", "[EXT]"]
+  sharing_only_from_production: true
+status_flags:
+  production: "🟢"
+  beta: "🟡"
+  draft: "🟠"
+  deprecated: "🔴"
+root_file_allowance: [CLAUDE.md]
+entity_reference_requires: [production_drive_folder_id]
+internal_solutions:
+  path: Internal/Solutions
+  naming: "Solutions | <Category> | <Platform>"

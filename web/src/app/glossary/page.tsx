@@ -52,7 +52,7 @@ const GROUPS: Group[] = [
       { term: "Severity", def: "How a finding is weighted: error, warn, or info — or off to disable a rule for this workspace." },
       { term: "Convention", def: "A tunable parameter behind certain rules — the relationship vocabulary, the WIP-note sections, the pipe separator." },
       { term: "House rule", def: "A rule you write in plain language. Its text goes into AGENTS.md so agents follow it; an optional check (e.g. filename prefix) lets the audit enforce the mechanical part." },
-      { term: "Profile", def: "An org-specific layer over the neutral core — starter topology, template overrides, rituals (e.g. the “incubeta” profile's Draft_ → [INT]/[EXT] lifecycle). “core” is the neutral baseline." },
+      { term: "Profile", def: "An organisation's preset layered over the neutral protocol — starter topology, template overrides, rituals (e.g. a Draft_ → [INT]/[EXT] lifecycle). Every profile is custom: create, edit and delete them on the Profiles page; they're stored in profiles/<name>/, outside the spec." },
     ],
   },
   {

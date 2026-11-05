@@ -1,31 +1,35 @@
 import Link from "next/link";
 import { q } from "@/lib/db";
 import { googleConfigured } from "@/lib/google";
-import { listProfiles } from "@/lib/spec";
+import { listProfiles, readProfile } from "@/lib/profiles";
 import { createWorkspaceAction } from "./actions";
 import FolderPicker from "@/components/folder-picker";
 import type { AuditStats } from "@/lib/linter";
 
 export const dynamic = "force-dynamic";
 
-function ProfileSelect() {
+function ProfileSelect({ lastUsed }: { lastUsed?: string }) {
+  const profiles = listProfiles();
+  const fallback = profiles.includes(lastUsed ?? "") ? lastUsed : profiles[0];
   return (
     <label className="block text-sm font-medium text-zinc-700">
       Profile
-      <select name="profile" defaultValue="incubeta" className="input">
-        {listProfiles().map((p) => (
-          <option key={p} value={p}>
-            {p}
-            {p === "core" ? " (organisation-neutral)" : ""}
-          </option>
-        ))}
+      <select name="profile" defaultValue={fallback ?? ""} className="input">
+        {profiles.map((p) => {
+          const d = readProfile(p).def?.description;
+          return (
+            <option key={p} value={p}>
+              {p}
+              {d ? ` — ${d.length > 60 ? `${d.slice(0, 57)}…` : d}` : ""}
+            </option>
+          );
+        })}
+        <option value="">none (protocol baseline only)</option>
       </select>
       <span className="mt-1 block text-xs font-normal text-zinc-500">
-        The starter folder layout, templates, and org rituals. Pick{" "}
-        <span className="font-mono">incubeta</span> for Incubeta work,{" "}
-        <span className="font-mono">core</span> for a neutral Drive.{" "}
+        The starter folder layout, templates, and org rituals.{" "}
         <Link href="/profiles" className="text-indigo-600 hover:underline">
-          What&apos;s in each?
+          Manage profiles
         </Link>
       </span>
     </label>
@@ -36,6 +40,7 @@ export default function Home() {
   const workspaces = q.listWorkspaces();
   const driveReady = googleConfigured();
   const driveAccounts = driveReady ? q.listTokenEmails() : [];
+  const lastUsedProfile = workspaces.at(-1)?.profile;
 
   return (
     <div className="space-y-10">
@@ -106,7 +111,7 @@ export default function Home() {
               <FolderPicker name="root" />
             </div>
           </div>
-          <ProfileSelect />
+          <ProfileSelect lastUsed={lastUsedProfile} />
           <button className="btn-primary">Add workspace</button>
         </form>
 
@@ -154,7 +159,7 @@ export default function Home() {
                     className="input"
                   />
                 </label>
-                <ProfileSelect />
+                <ProfileSelect lastUsed={lastUsedProfile} />
                 <button className="btn-primary">Add Drive workspace</button>
               </form>
             </>

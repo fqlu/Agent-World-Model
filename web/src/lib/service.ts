@@ -5,6 +5,7 @@ import { buildScaffoldPlan, ScaffoldOptions } from "./scaffold";
 import { buildAdoptionPlan } from "./adopt";
 import { Op, applyOps, journalAgentActivity, OpResult } from "./ops";
 import { parseWorkspaceYaml } from "./workspace";
+import { normalizeIgnoreList, normalizeIgnorePath } from "./ignore";
 import { writeIndex } from "./index-gen";
 import { writeModel } from "./model-gen";
 import {
@@ -168,6 +169,7 @@ export async function getRulesSvc(wsId: number) {
     rules: cfg.rules,
     conventions: cfg.conventions,
     houseRules: decl?.house_rules ?? [],
+    ignore: normalizeIgnoreList(decl?.ignore),
     profile: ws.profile,
   };
 }
@@ -225,35 +227,103 @@ export async function saveRulesSvc(
 
   await c.write("_Workspace.yaml", YAML.stringify(doc), { overwrite: true });
 
-  // Regenerate AGENTS.md from the new effective config
+  await regenerateAgentsSvc(ws, c, YAML.stringify(doc), "rule config updated; AGENTS.md regenerated");
+  return { ok: true };
+}
+
+// Rebuild AGENTS.md from the workspace's own declaration (owner, house rules,
+// conventions, ignore list) and journal it. Best-effort: never fails a save.
+async function regenerateAgentsSvc(
+  ws: NonNullable<ReturnType<typeof q.getWorkspace>>,
+  c: ReturnType<typeof connectorFor>,
+  workspaceYaml: string,
+  journalMessage: string,
+) {
   try {
-    const newDecl = parseWorkspaceYaml(YAML.stringify(doc));
+    const decl = parseWorkspaceYaml(workspaceYaml);
     const mounts = {
-      areas: newDecl?.mounts?.areas ?? [],
-      journal: newDecl?.mounts?.journal ?? "Journal",
-      templates: newDecl?.mounts?.templates ?? "Templates",
-      archive: newDecl?.mounts?.archive ?? "Archive",
-      context: newDecl?.mounts?.context,
-      entities: newDecl?.mounts?.entities,
+      areas: decl?.mounts?.areas ?? [],
+      journal: decl?.mounts?.journal ?? "Journal",
+      templates: decl?.mounts?.templates ?? "Templates",
+      archive: decl?.mounts?.archive ?? "Archive",
+      context: decl?.mounts?.context,
+      entities: decl?.mounts?.entities,
     };
     const { renderAgentsMd } = await import("./scaffold");
     const agents = renderAgentsMd(
       {
         workspaceName: ws.name,
-        ownerName: process.env.HUB_OWNER_NAME ?? ws.name,
-        ownerEmail: process.env.HUB_OWNER_EMAIL ?? ws.account_email ?? "owner@unknown",
+        ownerName: decl?.owner?.name ?? process.env.HUB_OWNER_NAME ?? ws.name,
+        ownerEmail:
+          decl?.owner?.email ?? process.env.HUB_OWNER_EMAIL ?? ws.account_email ?? "owner@unknown",
         profile: ws.profile,
       },
       mounts,
-      newDecl,
+      decl,
     );
     await c.write("AGENTS.md", agents, { overwrite: true });
-    const journal = newDecl?.mounts?.journal ?? "Journal";
-    await journalAgentActivity(c, journal, `rule config updated; AGENTS.md regenerated`);
+    await journalAgentActivity(c, mounts.journal, journalMessage);
   } catch {
     /* AGENTS regen / journal best-effort */
   }
-  return { ok: true };
+}
+
+export async function getIgnoreSvc(wsId: number): Promise<{ ignore: string[] }> {
+  const ws = q.getWorkspace(wsId);
+  if (!ws) throw new Error(`Workspace ${wsId} not found`);
+  const raw = await connectorFor(ws).read("_Workspace.yaml");
+  return { ignore: normalizeIgnoreList(raw ? parseWorkspaceYaml(raw)?.ignore : []) };
+}
+
+// Persist the ignore list into _Workspace.yaml (the knowledge layer, not the
+// app DB) and regenerate AGENTS.md so agents see which paths are excluded.
+export async function saveIgnoreSvc(wsId: number, paths: unknown): Promise<{ ignore: string[] }> {
+  const ws = q.getWorkspace(wsId);
+  if (!ws) throw new Error(`Workspace ${wsId} not found`);
+  if (!Array.isArray(paths)) throw new Error("ignore must be a list of paths");
+  const c = connectorFor(ws);
+  const YAML = (await import("yaml")).default;
+  const raw = await c.read("_Workspace.yaml");
+  if (!raw) throw new Error("Workspace has no _Workspace.yaml");
+  const decl = parseWorkspaceYaml(raw);
+  const { loadManifest } = await import("./spec");
+  const manifest = loadManifest();
+  const protectedFiles = new Set([
+    ...manifest.workspace.required_root_files,
+    ...(manifest.workspace.optional_root_files ?? []),
+  ]);
+  const m = decl?.mounts ?? {};
+  const mounts = [...(m.areas ?? []), m.journal, m.templates, m.archive, m.context, m.entities].filter(
+    (x): x is string => Boolean(x),
+  );
+
+  const clean: string[] = [];
+  for (const item of paths) {
+    const p = typeof item === "string" ? normalizeIgnorePath(item) : null;
+    if (!p) throw new Error(`"${String(item)}" isn't a workspace-relative path`);
+    if (protectedFiles.has(p)) throw new Error(`"${p}" is a protocol file and can't be ignored`);
+    const mount = mounts.find((x) => x === p || x.startsWith(`${p}/`));
+    if (mount) {
+      throw new Error(
+        `"${p}" ${mount === p ? "is" : "contains"} the declared mount "${mount}" — ignore folders inside it instead`,
+      );
+    }
+    if (!(await c.exists(p))) throw new Error(`"${p}" doesn't exist in this workspace`);
+    if (!clean.includes(p)) clean.push(p);
+  }
+
+  const doc = YAML.parseDocument(raw);
+  if (clean.length) doc.set("ignore", clean);
+  else doc.delete("ignore");
+  const text = doc.toString();
+  await c.write("_Workspace.yaml", text, { overwrite: true });
+  await regenerateAgentsSvc(
+    ws,
+    c,
+    text,
+    clean.length ? `ignore list updated (${clean.join(", ")}); AGENTS.md regenerated` : "ignore list cleared; AGENTS.md regenerated",
+  );
+  return { ignore: clean };
 }
 
 export async function exportOkfSvc(wsId: number) {

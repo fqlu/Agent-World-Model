@@ -34,6 +34,9 @@ export type WorkspaceDecl = {
     };
   };
   house_rules?: HouseRule[];
+  // Paths (and everything below them) outside the protocol: no audit, no
+  // adopt, no index/model. Lives here so it travels with the workspace.
+  ignore?: string[];
 };
 
 // Parse leading YAML frontmatter from any markdown file (e.g. _Overview.md).
@@ -83,6 +86,19 @@ export function declaredAliases(overviewMd: string | null): string[] {
 }
 
 export const PIPE = " | ";
+// Drive-safe spelling of the pipe. Google Drive for desktop rewrites "|" in
+// folder names, so " _ " is accepted as the same separator (SPEC §5.1).
+export const PIPE_ALT = " _ ";
+const PIPE_SPLIT = / [|_] /;
+
+export function splitPipe(name: string): string[] {
+  return name.split(PIPE_SPLIT);
+}
+
+// The separator a name already uses, so suggested renames keep its spelling.
+export function separatorOf(name: string): string {
+  return !name.includes(PIPE) && name.includes(PIPE_ALT) ? PIPE_ALT : PIPE;
+}
 
 // Check a scope/collection folder name against its ancestor chain.
 // chain: allowedForms for each ancestor segment, outermost first.
@@ -90,8 +106,8 @@ export function checkPipeName(
   name: string,
   chain: Set<string>[],
 ): { ok: boolean; expectedPrefix: string; ownSegment: string | null } {
-  const parts = name.split(PIPE);
-  const expectedPrefix = chain.map((s) => [...s][0]).join(PIPE);
+  const parts = splitPipe(name);
+  const expectedPrefix = chain.map((s) => [...s][0]).join(separatorOf(name));
   if (parts.length !== chain.length + 1) {
     return { ok: false, expectedPrefix, ownSegment: parts[parts.length - 1] ?? null };
   }

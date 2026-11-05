@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { q } from "@/lib/db";
+import { profileExists } from "@/lib/profiles";
 
 export async function GET() {
   return NextResponse.json(q.listWorkspaces());
@@ -10,6 +11,9 @@ export async function POST(req: NextRequest) {
   const { name, kind = "local", root, account_email, profile } = body ?? {};
   if (!name || !root || !["local", "gdrive"].includes(kind)) {
     return NextResponse.json({ error: "name, root, kind(local|gdrive) required" }, { status: 400 });
+  }
+  if (profile !== undefined && profile !== "" && !profileExists(String(profile))) {
+    return NextResponse.json({ error: `unknown profile "${profile}"` }, { status: 400 });
   }
   const id = q.createWorkspace({ name, kind, root, account_email, profile });
   return NextResponse.json({ id }, { status: 201 });

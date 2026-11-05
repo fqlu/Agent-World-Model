@@ -141,8 +141,8 @@ export default function AboutPage() {
         </div>
         <p className="mt-3 max-w-3xl text-sm text-zinc-600">
           The structure is <strong>not one-size-fits-all</strong>: each workspace declares its
-          own layout, and organisation-specific rituals (like Incubeta's draft → production
-          lifecycle) live in a <em>profile</em> layered on a neutral core — so a client-services
+          own layout, and organisation-specific rituals (like a draft → production lifecycle)
+          live in a <em>profile</em> you define, layered on a neutral core — so a client-services
           folder, a research archive, and a personal Drive can all speak the same protocol.
         </p>
       </section>

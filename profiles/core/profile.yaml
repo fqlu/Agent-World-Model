@@ -1,0 +1,10 @@
+# Profile: core — format documented in profiles/README.md
+description: Organisation-neutral starting point — a generic Projects/ area, no draft lifecycle, no org rituals.
+default_topology:
+  areas: [Projects]
+  journal: Journal
+  templates: Templates
+  archive: Archive
+  context: _Context
+  entities: _Entities
+root_file_allowance: []

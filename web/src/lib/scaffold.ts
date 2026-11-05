@@ -1,5 +1,7 @@
 import YAML from "yaml";
 import { loadManifest, loadTemplate, ProfileDef } from "./spec";
+import { resolveProfile } from "./profiles";
+import { normalizeIgnoreList } from "./ignore";
 import { Mounts, WorkspaceDecl } from "./workspace";
 import { resolveRuleConfig, renderRulesSummary } from "./rules";
 import { Op } from "./ops";
@@ -13,9 +15,7 @@ export type ScaffoldOptions = {
 };
 
 export function defaultTopology(profileName: string): Mounts {
-  const manifest = loadManifest();
-  const p = manifest.profiles[profileName];
-  const t = p?.default_topology;
+  const t = resolveProfile(profileName).default_topology;
   if (t)
     return {
       areas: [...t.areas],
@@ -33,7 +33,7 @@ export function defaultTopology(profileName: string): Mounts {
   };
 }
 
-export function renderMap(mounts: Mounts): string {
+export function renderMap(mounts: Mounts, ignore: string[] = []): string {
   const lines: string[] = [];
   lines.push("_Workspace.yaml   ← topology declaration (this map's source)");
   lines.push("_Overview.md      ← whose workspace this is; start here");
@@ -44,6 +44,12 @@ export function renderMap(mounts: Mounts): string {
   lines.push(`${mounts.archive}/`.padEnd(18) + "← archive: superseded material, mirrors paths");
   if (mounts.context) {
     lines.push(`${mounts.context}/`.padEnd(18) + "← context groups: declared folder associations");
+  }
+  if (mounts.entities) {
+    lines.push(`${mounts.entities}/`.padEnd(18) + "← entities: people, systems, concepts as addressable nodes");
+  }
+  for (const p of ignore) {
+    lines.push(`${p}/`.padEnd(17) + " ← ignored: outside the protocol (not audited or indexed)");
   }
   return lines.join("\n");
 }
@@ -90,7 +96,7 @@ export function renderAgentsMd(
   decl?: WorkspaceDecl | null,
 ): string {
   const manifest = loadManifest();
-  const profile = manifest.profiles[opts.profile] ?? {};
+  const profile = resolveProfile(opts.profile);
   const cfg = resolveRuleConfig(decl ?? null);
   // Reflect the workspace's DECLARED spec version (regenerating AGENTS must not
   // silently bump it ahead of _Workspace.yaml — that's the adopt flow's job).
@@ -100,7 +106,7 @@ export function renderAgentsMd(
     .replaceAll("{{profile}}", opts.profile)
     .replaceAll("{{owner_name}}", opts.ownerName)
     .replaceAll("{{owner_email}}", opts.ownerEmail)
-    .replaceAll("{{map}}", renderMap(mounts))
+    .replaceAll("{{map}}", renderMap(mounts, normalizeIgnoreList(decl?.ignore)))
     .replaceAll("{{rules_summary}}", renderRulesSummary(cfg))
     .replaceAll("{{house_rules}}", renderHouseRules(decl ?? null))
     .replaceAll("{{profile_rules}}", renderProfileRules(opts.profile, profile));

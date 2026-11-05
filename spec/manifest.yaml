@@ -13,6 +13,7 @@ workspace:
   optional_capabilities: [context, entities]                          # §6.4, §6.6
   areas_min: 1                                                        # ST-003
   protocol_synced_with_manifest: true                                 # ST-005
+  ignore_key: ignore               # optional list of paths outside the protocol (skipped by audit and all tree readers)
   # undeclared root items -> ST-004 (warn); profiles may whitelist files
 
 scopes:
@@ -90,6 +91,7 @@ projection:                      # §6.8 — generated world-model snapshot
 
 naming:
   pipe_separator: " | "
+  pipe_separator_aliases: [" _ "]    # Drive-safe spelling (Drive for desktop rewrites "|"); equivalent for NM-001
   entity_no_pipes: true              # NM-003
   ancestry_prefix: short_name_aware  # NM-001; short name = trailing "(...)" of own segment, or declared `aliases:` in the scope's _Overview.md (v0.14)
   iso_dates: true                    # NM-002
@@ -136,39 +138,20 @@ rules:
   - { id: TR-001, severity: warn,  summary: stale_after not breached — re-verify or deprecate (v0.14) }
   - { id: TR-002, severity: warn,  summary: trust fields well-formed (status vocab, ISO stale_after) (v0.14) }
 
-# Profiles layer org-specific rituals and template overrides onto the core
-# protocol. Template overrides live in spec/templates/profiles/<profile>/ and
-# fall back to the neutral base templates in spec/templates/.
-profiles:
-  core:
-    # The organisation-neutral baseline: no draft lifecycle, no org rituals.
-    default_topology:
-      areas: [Projects]
-      journal: Journal
-      templates: Templates
-      archive: Archive
-      context: _Context
-      entities: _Entities
-    root_file_allowance: []
-  incubeta:
-    default_topology:           # starter, not law — workspaces may declare otherwise
-      areas: [Clients, Internal]
-      journal: Journal
-      templates: Templates
-      archive: Archive
-      context: _Context
-      entities: _Entities
-    draft_lifecycle:
-      working_prefix: "Draft_"
-      production_prefixes: ["[INT]", "[EXT]"]
-      sharing_only_from_production: true
-    status_flags:
-      production: "🟢"
-      beta: "🟡"
-      draft: "🟠"
-      deprecated: "🔴"
-    root_file_allowance: [CLAUDE.md]
-    entity_reference_requires: [production_drive_folder_id]
-    internal_solutions:
-      path: Internal/Solutions
-      naming: "Solutions | <Category> | <Platform>"
+# Profiles are NOT part of the protocol. They are organisation-specific presets
+# (starter topology, draft lifecycle, status flags, template overrides) that live
+# outside the spec in <repo>/profiles/<name>/ — profile.yaml plus an optional
+# templates/ folder — and are created, edited and deleted from the app's
+# Profiles page. Every profile is custom; none ships with the spec.
+#
+# The baseline below is the protocol's own fallback: it applies when a
+# workspace names no profile, or one that no longer exists.
+baseline:
+  default_topology:
+    areas: [Projects]
+    journal: Journal
+    templates: Templates
+    archive: Archive
+    context: _Context
+    entities: _Entities
+  root_file_allowance: []

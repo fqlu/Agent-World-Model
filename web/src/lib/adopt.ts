@@ -1,7 +1,7 @@
 import YAML from "yaml";
 import { Connector, parentPath, baseName } from "./connector";
 import { loadManifest, loadTemplate } from "./spec";
-import { parseWorkspaceYaml, allowedForms, checkPipeName, Mounts, PIPE } from "./workspace";
+import { parseWorkspaceYaml, allowedForms, checkPipeName, splitPipe, separatorOf, Mounts } from "./workspace";
 import { Op } from "./ops";
 import { runAudit, Finding } from "./linter";
 import {
@@ -63,6 +63,7 @@ export async function buildAdoptionPlan(
       templates: decl!.mounts!.templates ?? "Templates",
       archive: decl!.mounts!.archive ?? "Archive",
       context: decl!.mounts!.context,
+      entities: decl!.mounts!.entities,
     };
     notes.push("Existing _Workspace.yaml found — using its declared topology.");
     if (decl!.spec_version && String(decl!.spec_version) !== manifest.spec_version) {
@@ -120,7 +121,17 @@ export async function buildAdoptionPlan(
   ops.push({
     action: "write",
     path: "AGENTS.md",
-    content: renderAgentsMd(opts, mounts),
+    // Rebuild from the workspace's own declaration: its owner, house rules,
+    // rule overrides and conventions — not just the app-level defaults.
+    content: renderAgentsMd(
+      {
+        ...opts,
+        ownerName: decl?.owner?.name ?? opts.ownerName,
+        ownerEmail: decl?.owner?.email ?? opts.ownerEmail,
+      },
+      mounts,
+      decl,
+    ),
     overwrite: true,
     note: rootNames.has("AGENTS.md")
       ? "Regenerate AGENTS.md from spec + profile + topology"
@@ -230,12 +241,13 @@ export async function buildAdoptionPlan(
   async function proposeNamingRepairs(path: string, children: Awaited<ReturnType<Connector["list"]>>, chain: Set<string>[]) {
     for (const child of children) {
       if (child.kind !== "folder" || child.name === ctxName) continue;
-      const lastSegment = child.name.split(PIPE).pop() ?? child.name;
+      const lastSegment = splitPipe(child.name).pop() ?? child.name;
+      const sep = separatorOf(child.name);
       const pipeCheck = checkPipeName(child.name, chain);
 
       if (lastSegment === WIP_SUFFIX) {
         if (!pipeCheck.ok) {
-          const fixedName = `${pipeCheck.expectedPrefix}${PIPE}${WIP_SUFFIX}`;
+          const fixedName = `${pipeCheck.expectedPrefix}${sep}${WIP_SUFFIX}`;
           ops.push({
             action: "move",
             path: child.path,
@@ -251,7 +263,7 @@ export async function buildAdoptionPlan(
       const grandchildren = await c.list(child.path);
       const promoted = grandchildren.some((e) => e.name === manifest.scopes.context_file);
       if (promoted && !pipeCheck.ok) {
-        const fixedName = `${pipeCheck.expectedPrefix}${PIPE}${lastSegment}`;
+        const fixedName = `${pipeCheck.expectedPrefix}${sep}${lastSegment}`;
         if (fixedName !== child.name) {
           ops.push({
             action: "move",

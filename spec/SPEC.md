@@ -58,6 +58,8 @@ mounts:
   templates: Templates         # canonical templates for this workspace
   archive: Archive             # non-destruction capability (§8)
   context: _Context            # OPTIONAL: context groups (§6.4)
+ignore:                        # OPTIONAL: paths outside the protocol
+  - Internal/Solutions/some-code-repo
 ```
 
 - The workspace root MUST contain `_Workspace.yaml`, `AGENTS.md`, and
@@ -70,6 +72,12 @@ mounts:
   exist like any other (`[ST-002]`) and its group files must be valid.
 - At least one **area** MUST be declared. Areas hold scopes; their names are
   free (`Clients`, `Projects`, `Research`…). `[ST-003]`
+- `ignore:` lists workspace-relative paths that are **outside the protocol**
+  (a code repository, a tool's scratch output). An ignored path and everything
+  below it is skipped by the audit and by every tool that reads the tree
+  (repair proposals, index, world model, exports); the setting lives in the
+  workspace so it travels with it. Declared mounts and the root protocol files
+  cannot be ignored. `AGENTS.md` lists ignored paths in its Map.
 - Root items not declared in the manifest are flagged for triage. Profiles MAY
   whitelist extra root files (e.g. `CLAUDE.md`). `[ST-004]`
 - `AGENTS.md` is generated from the spec + profile + `_Workspace.yaml` and
@@ -194,6 +202,10 @@ the convention — it helps search — but are not linted): `[NM-001]`
 <Entity short name> | <Unit short name> | <Sub-project>
 ```
 
+- **Drive-safe separator.** Google Drive for desktop rewrites `|` in folder
+  names, so ` _ ` (space, underscore, space) is accepted as the same
+  separator: `Hanes _ Bonds` is equivalent to `Hanes | Bonds`. Tools suggesting
+  a rename keep whichever spelling the folder already uses.
 - **Short names** are declared in parentheses at the end of a folder's own
   segment — `Hanesbrands (Hanes)`, `TMCA | NVI (New Vehicle Inventory)` — and
   descendants use the short form: `Hanes | Bonds`, `TMCA | NVI | Floodlight`.
@@ -629,12 +641,16 @@ A rule with no `check` is agent-followed only — not mechanically audited.
 ## 10. Profiles
 
 A profile layers org-specific ritual onto the core: lint allowances, starter
-topology, and **template overrides** (`templates/profiles/<profile>/` falls
-back to the organisation-neutral base templates). The **`core`** profile is
-the neutral baseline — generic topology (`Projects/` + capabilities), no org
-rituals, no client vocabulary — and is the right starting point for any
-non-Incubeta structure. The **`incubeta`** profile adds (full definition in
-`manifest.yaml`):
+topology, and **template overrides** (falling back to the organisation-neutral
+base templates in `templates/`). Profiles are **not part of this spec**: every
+profile is custom, defined by the implementation outside the spec (the
+reference app keeps them in `profiles/<name>/profile.yaml` + `templates/` and
+manages them from its Profiles page). When a workspace names no profile, or one
+that doesn't exist, the manifest's `baseline` applies — generic topology
+(`Projects/` + capabilities), no org rituals, no client vocabulary.
+
+The reference implementation ships two example profiles: **`core`**, which
+mirrors the baseline, and **`incubeta`**, which adds:
 
 - **Draft lifecycle:** working files are prefixed `Draft_`; promotion to the
   production Drive strips the prefix and adds `[INT]`/`[EXT]`. Draft files

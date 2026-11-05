@@ -42,22 +42,40 @@ export type SpecManifest = {
     target: string;
   };
   rules: LintRuleDef[];
-  profiles: Record<string, ProfileDef>;
+  // The protocol's own fallback when a workspace names no (or a missing) profile.
+  // Profiles themselves live outside the spec — see lib/profiles.ts.
+  baseline?: Pick<ProfileDef, "default_topology" | "root_file_allowance">;
+};
+
+export type ProfileTopology = {
+  areas: string[];
+  journal: string;
+  templates: string;
+  archive: string;
+  context?: string;
+  entities?: string;
 };
 
 export type ProfileDef = {
-  default_topology?: {
-    areas: string[];
-    journal: string;
-    templates: string;
-    archive: string;
-    context?: string;
+  description?: string;
+  default_topology?: ProfileTopology;
+  draft_lifecycle?: {
+    working_prefix: string;
+    production_prefixes: string[];
+    sharing_only_from_production?: boolean;
   };
-  draft_lifecycle?: { working_prefix: string; production_prefixes: string[] };
   status_flags?: Record<string, string>;
   root_file_allowance?: string[];
   [k: string]: unknown;
 };
+
+// Org-specific profiles: <repo root>/profiles/<name>/{profile.yaml,templates/}.
+export const PROFILES_DIR =
+  process.env.PROFILES_DIR ?? path.resolve(process.cwd(), "..", "profiles");
+export const BASE_TEMPLATES_DIR = path.join(SPEC_DIR, "templates");
+
+// Lowercase slug; also what keeps profile names from escaping PROFILES_DIR.
+export const PROFILE_NAME_RE = /^[a-z0-9][a-z0-9-]{0,39}$/;
 
 let cached: SpecManifest | null = null;
 
@@ -69,18 +87,14 @@ export function loadManifest(): SpecManifest {
   return cached;
 }
 
-// Profile template overrides (spec/templates/profiles/<profile>/<name>)
-// take precedence over the organisation-neutral base templates.
+// Profile template overrides (profiles/<profile>/templates/<name>) take
+// precedence over the organisation-neutral base templates in spec/templates/.
 export function loadTemplate(name: string, profile?: string): string {
-  if (profile) {
-    const override = path.join(SPEC_DIR, "templates", "profiles", profile, name);
+  if (profile && PROFILE_NAME_RE.test(profile) && path.basename(name) === name) {
+    const override = path.join(PROFILES_DIR, profile, "templates", name);
     if (fs.existsSync(override)) return fs.readFileSync(override, "utf-8");
   }
-  return fs.readFileSync(path.join(SPEC_DIR, "templates", name), "utf-8");
-}
-
-export function listProfiles(): string[] {
-  return Object.keys(loadManifest().profiles);
+  return fs.readFileSync(path.join(BASE_TEMPLATES_DIR, name), "utf-8");
 }
 
 export function relationshipPredicates(): string[] {

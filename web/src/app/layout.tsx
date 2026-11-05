@@ -37,6 +37,9 @@ export default function RootLayout({
             </Link>
             <span className="text-sm text-zinc-500">Drive Context Protocol</span>
             <nav className="ml-auto flex items-center gap-4">
+              <Link href="/profiles" className="text-sm text-indigo-600 hover:underline">
+                Profiles
+              </Link>
               <Link href="/glossary" className="text-sm text-indigo-600 hover:underline">
                 Glossary
               </Link>

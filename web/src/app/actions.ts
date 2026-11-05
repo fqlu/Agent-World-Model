@@ -3,6 +3,7 @@
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { q } from "@/lib/db";
+import { profileExists } from "@/lib/profiles";
 import {
   runAuditSvc,
   createProposalSvc,
@@ -15,8 +16,9 @@ export async function createWorkspaceAction(formData: FormData) {
   const kind = String(formData.get("kind") ?? "local");
   const root = String(formData.get("root") ?? "").trim();
   const accountEmail = String(formData.get("account_email") ?? "").trim() || null;
-  const profile = String(formData.get("profile") ?? "").trim() || "incubeta";
+  const profile = String(formData.get("profile") ?? "").trim();
   if (!name || !root) throw new Error("Name and root are required");
+  if (profile && !profileExists(profile)) throw new Error(`Unknown profile "${profile}"`);
   const id = q.createWorkspace({ name, kind, root, account_email: accountEmail, profile });
   redirect(`/w/${id}`);
 }

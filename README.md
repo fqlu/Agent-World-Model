@@ -7,6 +7,8 @@ that structure on a connected Google Drive.
 - **`spec/SPEC.md`** — the Drive Context Protocol (human-readable, versioned)
 - **`spec/manifest.yaml`** — the same rules, machine-readable (consumed by the linter)
 - **`spec/templates/`** — canonical templates a provisioned workspace receives
+- **`profiles/`** — organisation profiles (not part of the spec), managed from
+  the app's Profiles page; see `profiles/README.md`
 
 ## Roadmap
 
@@ -60,6 +62,9 @@ and `_PROTOCOL.md` files for local workspaces too.
 - `POST /api/workspaces/:id/proposals` `{kind: scaffold|adopt}` → plan (no writes)
 - `POST /api/proposals/:pid/apply` `{selected?: number[]}` → applies ops
   (defaults to the plan's safe selection; risky ops must be opted into)
+- `GET|PUT /api/workspaces/:id/ignore` `{ignore: string[]}` → paths outside the
+  protocol, stored in the workspace's `_Workspace.yaml` (skipped by audit,
+  adopt, index, model, exports)
 - `GET /api/workspaces/:id/tree?path=X&depth=4` → folder subtree under X
 - `GET|PUT /api/workspaces/:id/context?path=X` → read/write the context groups
   declared at folder X (root when omitted). Members are descendant folder
