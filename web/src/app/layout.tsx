@@ -2,6 +2,8 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import Link from "next/link";
 import "./globals.css";
+import { cookies } from "next/headers";
+import { authEnabled, verifySession, SESSION_COOKIE } from "@/lib/auth";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -18,11 +20,12 @@ export const metadata: Metadata = {
   description: "Drive Context Protocol — provision, audit, and repair agent-ready workspaces",
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  const session = authEnabled() ? await verifySession((await cookies()).get(SESSION_COOKIE)?.value) : null;
   return (
     <html
       lang="en"
@@ -46,6 +49,12 @@ export default function RootLayout({
               <Link href="/about" className="text-sm text-indigo-600 hover:underline">
                 What is this?
               </Link>
+              {session && (
+                <form action="/api/auth/logout" method="post" className="flex items-center gap-2">
+                  <span className="text-xs text-zinc-500">{session.email}</span>
+                  <button className="text-xs text-zinc-500 hover:text-zinc-800 hover:underline">Sign out</button>
+                </form>
+              )}
             </nav>
           </div>
         </header>

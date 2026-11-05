@@ -14,7 +14,9 @@ function getDb(): DatabaseType.Database {
   const DATA_DIR = process.env.HUB_DATA_DIR ?? path.join(process.cwd(), "data");
   fs.mkdirSync(DATA_DIR, { recursive: true });
   const db = new Database(path.join(DATA_DIR, "hub.db"));
-  db.pragma("journal_mode = WAL");
+  // WAL needs shared memory, which network filesystems (e.g. a Cloud Storage
+  // volume on Cloud Run) don't support — set HUB_SQLITE_JOURNAL=DELETE there.
+  db.pragma(`journal_mode = ${process.env.HUB_SQLITE_JOURNAL === "DELETE" ? "DELETE" : "WAL"}`);
   db.exec(SCHEMA);
   // Additive migrations (CREATE IF NOT EXISTS can't add columns)
   try {

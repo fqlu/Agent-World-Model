@@ -1,0 +1,8 @@
+**/node_modules
+**/.next
+web/data
+**/.git
+**/Icon?
+**/.DS_Store
+web/.env*
+spec/drafts
