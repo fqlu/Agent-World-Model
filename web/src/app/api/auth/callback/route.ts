@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { google } from "googleapis";
-import { baseUrl, isAllowed, signSession, SESSION_COOKIE, SESSION_MAX_AGE, STATE_COOKIE } from "@/lib/auth";
+import { baseUrl, isAllowed, secureCookies, signSession, SESSION_COOKIE, SESSION_MAX_AGE, STATE_COOKIE } from "@/lib/auth";
 
 export async function GET(req: NextRequest) {
   const code = req.nextUrl.searchParams.get("code");
@@ -28,7 +28,7 @@ export async function GET(req: NextRequest) {
     const res = NextResponse.redirect(new URL(next.startsWith("/") ? next : "/", baseUrl(req.nextUrl.origin)));
     res.cookies.set(SESSION_COOKIE, await signSession(p.email), {
       httpOnly: true,
-      secure: req.nextUrl.protocol === "https:" || Boolean(process.env.APP_URL?.startsWith("https:")),
+      secure: secureCookies(req.nextUrl.protocol),
       sameSite: "lax",
       path: "/",
       maxAge: SESSION_MAX_AGE,

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { google } from "googleapis";
-import { baseUrl, STATE_COOKIE } from "@/lib/auth";
+import { baseUrl, secureCookies, STATE_COOKIE } from "@/lib/auth";
 
 // Start Google sign-in (identity only: openid + email). Drive access is a
 // separate, explicit "Connect Google account" step on the home page.
@@ -24,6 +24,6 @@ export async function GET(req: NextRequest) {
       : {}),
   });
   const res = NextResponse.redirect(url);
-  res.cookies.set(STATE_COOKIE, state, { httpOnly: true, secure: req.nextUrl.protocol === "https:", sameSite: "lax", path: "/", maxAge: 600 });
+  res.cookies.set(STATE_COOKIE, state, { httpOnly: true, secure: secureCookies(req.nextUrl.protocol), sameSite: "lax", path: "/", maxAge: 600 });
   return res;
 }

@@ -73,3 +73,11 @@ export async function verifySession(token: string | undefined): Promise<Session 
 }
 
 export const SESSION_MAX_AGE = SESSION_DAYS * 86_400;
+
+// Secure cookies only when the browser-facing URL is https. Behind Cloud Run
+// the request looks like https even through a local http tunnel, so APP_URL
+// (when set) decides.
+export function secureCookies(requestProtocol: string): boolean {
+  if (process.env.APP_URL) return process.env.APP_URL.startsWith("https:");
+  return requestProtocol === "https:";
+}
