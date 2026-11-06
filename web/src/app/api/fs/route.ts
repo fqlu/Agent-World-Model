@@ -2,10 +2,14 @@ import { NextRequest, NextResponse } from "next/server";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import { isHosted } from "@/lib/hosting";
 
 // Local directory browser for the folder picker. Read-only, listing only,
 // confined to the user's home directory.
 export async function GET(req: NextRequest) {
+  if (isHosted()) {
+    return NextResponse.json({ error: "Local folders aren't available on the hosted app — use a Google Drive folder" }, { status: 400 });
+  }
   const home = os.homedir();
   const requested = req.nextUrl.searchParams.get("path") ?? home;
   const resolved = path.resolve(requested);

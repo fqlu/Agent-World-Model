@@ -4,6 +4,10 @@ import { googleConfigured } from "@/lib/google";
 import { listProfiles, readProfile } from "@/lib/profiles";
 import { createWorkspaceAction } from "./actions";
 import FolderPicker from "@/components/folder-picker";
+import DriveFolderPicker from "@/components/drive-folder-picker";
+import { isHosted } from "@/lib/hosting";
+import { cookies } from "next/headers";
+import { authEnabled, verifySession, SESSION_COOKIE } from "@/lib/auth";
 import type { AuditStats } from "@/lib/linter";
 
 export const dynamic = "force-dynamic";
@@ -36,11 +40,13 @@ function ProfileSelect({ lastUsed }: { lastUsed?: string }) {
   );
 }
 
-export default function Home() {
+export default async function Home() {
   const workspaces = q.listWorkspaces();
   const driveReady = googleConfigured();
   const driveAccounts = driveReady ? q.listTokenEmails() : [];
   const lastUsedProfile = workspaces.at(-1)?.profile;
+  const hosted = isHosted();
+  const session = authEnabled() ? await verifySession((await cookies()).get(SESSION_COOKIE)?.value) : null;
 
   return (
     <div className="space-y-10">
@@ -93,6 +99,7 @@ export default function Home() {
       </section>
 
       <section className="grid items-start gap-6 sm:grid-cols-2">
+        {!hosted && (
         <form action={createWorkspaceAction} className="card space-y-4 p-6">
           <div>
             <h2 className="font-semibold text-zinc-900">Add a local workspace</h2>
@@ -114,6 +121,7 @@ export default function Home() {
           <ProfileSelect lastUsed={lastUsedProfile} />
           <button className="btn-primary">Add workspace</button>
         </form>
+        )}
 
         <div className="card space-y-4 p-6">
           <div>
@@ -142,22 +150,19 @@ export default function Home() {
                 className="space-y-4 border-t border-zinc-100 pt-4"
               >
                 <input type="hidden" name="kind" value="gdrive" />
+                <div className="text-sm font-medium text-zinc-700">
+                  Workspace folder
+                  <div className="mt-1">
+                    <DriveFolderPicker
+                      accounts={driveAccounts}
+                      defaultAccount={session?.email}
+                      nameInputId="drive-ws-name"
+                    />
+                  </div>
+                </div>
                 <label className="block text-sm font-medium text-zinc-700">
                   Name
-                  <input name="name" required className="input" />
-                </label>
-                <label className="block text-sm font-medium text-zinc-700">
-                  Drive folder ID (the workspace root)
-                  <input name="root" required placeholder="1AbC…" className="input font-mono" />
-                </label>
-                <label className="block text-sm font-medium text-zinc-700">
-                  Account email
-                  <input
-                    name="account_email"
-                    required
-                    placeholder="you@company.com"
-                    className="input"
-                  />
+                  <input id="drive-ws-name" name="name" required className="input" placeholder="Filled from the folder you pick" />
                 </label>
                 <ProfileSelect lastUsed={lastUsedProfile} />
                 <button className="btn-primary">Add Drive workspace</button>
